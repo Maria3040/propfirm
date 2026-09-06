@@ -153,6 +153,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [basketOpen, setBasketOpen] = useState(false);
   const hasSession = !!authUser;
 
+  // Admins belong on the control panel, not the trader app shell.
+  useEffect(() => {
+    if (authUser?.role === 'Admin') {
+      router.replace('/admin');
+    }
+  }, [authUser, router]);
+
   const refreshBasket = useCallback(() => {
     const stored = readBasket();
     setBasket(stored.items);

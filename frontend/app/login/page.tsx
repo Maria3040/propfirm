@@ -34,7 +34,8 @@ function GoogleIcon() {
 function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
-  const next = search.get('next') || '/accounts';
+  const nextParam = search.get('next');
+  const next = nextParam || '/accounts';
   const [email, setEmail] = useState('trader@propfirm.local');
   const [password, setPassword] = useState('Trader1!');
   const [remember, setRemember] = useState(false);
@@ -74,7 +75,11 @@ function LoginForm() {
       saveSession(session);
       if (remember) localStorage.setItem(REMEMBER_KEY, email);
       else localStorage.removeItem(REMEMBER_KEY);
-      const path = next.startsWith('/') ? next.split('#')[0] : '/accounts';
+      // Admins land on the control panel unless a non-default next was requested.
+      let path = next.startsWith('/') ? next.split('#')[0] : '/accounts';
+      if (session.role === 'Admin' && (!nextParam || nextParam === '/accounts' || nextParam === '/dashboard')) {
+        path = '/admin';
+      }
       router.push(path);
     } catch (ex: unknown) {
       setErr(ex instanceof Error ? ex.message : 'login failed');

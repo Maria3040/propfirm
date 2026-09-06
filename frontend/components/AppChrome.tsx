@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { Suspense } from 'react';
 import { AppShell } from '@/components/AppShell';
+import { AdminShell } from '@/components/AdminShell';
 import { ChatWidget } from '@/components/ChatWidget';
 import { ApolloAppProvider } from '@/components/ApolloAppProvider';
 import { AuthBootstrap } from '@/components/AuthBootstrap';
@@ -22,7 +24,6 @@ const APP_PREFIXES = [
   '/trade-copier',
   '/affiliate',
   '/settings',
-  '/admin',
   '/graphql-lab',
 ];
 
@@ -36,10 +37,22 @@ function isAuthRoute(pathname: string) {
   return AUTH_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+function isAdminRoute(pathname: string) {
+  return pathname === '/admin' || pathname.startsWith('/admin/');
+}
+
 export function AppChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname() || '/';
 
   const body = (() => {
+    if (isAdminRoute(pathname)) {
+      return (
+        <Suspense fallback={<div className="admin-shell"><p className="meta">Loading admin…</p></div>}>
+          <AdminShell>{children}</AdminShell>
+        </Suspense>
+      );
+    }
+
     if (isAppRoute(pathname)) {
       return (
         <>
