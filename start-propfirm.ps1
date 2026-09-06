@@ -20,7 +20,7 @@ if (-not (Test-Path (Join-Path $frontend "node_modules"))) {
 $env:DATABASE_URL = "postgresql://propfirm:propfirm_dev@127.0.0.1:15433/propfirm"
 $env:HTTP_PORT = "6080"
 $env:SMTP_PORT = "2525"
-$env:CORS_ORIGIN = "http://localhost:3100"
+$env:CORS_ORIGIN = "http://localhost:3100,http://127.0.0.1:3100"
 $env:NEXT_PUBLIC_API_BASE = "http://localhost:6080"
 
 Write-Host "Building backend..." -ForegroundColor Cyan

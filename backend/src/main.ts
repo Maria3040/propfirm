@@ -7,7 +7,14 @@ import { ensureDatabase } from './persistence/ensure-database';
 async function bootstrap() {
   await ensureDatabase();
   const app = await NestFactory.create(AppModule);
-  app.enableCors({ origin: settings.corsOrigin, credentials: true });
+  const corsOrigins = settings.corsOrigin
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  app.enableCors({
+    origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
+    credentials: true,
+  });
   await app.listen(settings.httpPort, '0.0.0.0');
   console.log(`PropFirm API listening on http://localhost:${settings.httpPort}`);
 }

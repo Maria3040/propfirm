@@ -30,7 +30,7 @@ powershell -ExecutionPolicy Bypass -File .\start-propfirm.ps1
 
 | Service | URL |
 |---------|-----|
-| UI | http://localhost:3100 |
+| UI | http://localhost:3100 (use **localhost**, not `127.0.0.1`, unless CORS includes both) |
 | API | http://localhost:6080 |
 | Mailpit | http://localhost:8026 |
 | Postgres | localhost:15433 (`propfirm` / `propfirm_dev`) |

@@ -41,7 +41,14 @@ export async function api<T>(
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
-  const res = await fetch(`${API}${path}`, { ...opts, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${API}${path}`, { ...opts, headers });
+  } catch {
+    throw new Error(
+      `Failed to reach API at ${API}${path}. Start the backend (port 6080) and open the UI as http://localhost:3100 (not a different host).`,
+    );
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(text || res.statusText);
