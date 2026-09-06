@@ -680,6 +680,33 @@ export class ApiController {
     });
   }
 
+  @Get('api/competitions/joined')
+  async listJoinedCompetitions(@Headers('authorization') authorization?: string) {
+    const u = this.requireUser(authorization);
+    const ids = await this.runtime.listJoinedCompetitionIds(u.sub);
+    return { competitionIds: ids };
+  }
+
+  @Post('api/competitions/:id/join')
+  async joinCompetition(
+    @Param('id') id: string,
+    @Headers('authorization') authorization: string | undefined,
+    @Body() body: { title?: string },
+  ) {
+    const u = this.requireUser(authorization);
+    const title = (body?.title || '').trim() || `Competition ${id}`;
+    try {
+      return await this.runtime.joinCompetition({
+        traderId: u.sub,
+        competitionId: id,
+        competitionTitle: title,
+      });
+    } catch (ex: any) {
+      if (ex instanceof DomainError) throw new HttpException(ex.message, 400);
+      throw ex;
+    }
+  }
+
   @Get('api/notifications')
   async listNotifications(@Headers('authorization') authorization?: string) {
     this.requireUser(authorization);

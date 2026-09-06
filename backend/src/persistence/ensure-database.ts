@@ -11,6 +11,7 @@ const SCHEMAS = [
   'payouts',
   'notifications',
   'audithub',
+  'competitions',
 ];
 
 export async function ensureDatabase() {

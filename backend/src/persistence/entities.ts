@@ -454,6 +454,24 @@ export class LoginHistoryEntity {
   createdAt!: Date;
 }
 
+@Entity({ name: 'competition_joins', schema: 'competitions' })
+export class CompetitionJoinEntity {
+  @PrimaryColumn({ type: 'varchar', length: 64 })
+  id!: string;
+
+  @Column({ name: 'trader_id', type: 'varchar', length: 64 })
+  traderId!: string;
+
+  @Column({ name: 'competition_id', type: 'varchar', length: 64 })
+  competitionId!: string;
+
+  @Column({ name: 'competition_title', type: 'varchar', length: 300 })
+  competitionTitle!: string;
+
+  @Column({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+}
+
 export const ALL_ENTITIES = [
   TraderEntity,
   ProductEntity,
@@ -468,4 +486,5 @@ export const ALL_ENTITIES = [
   NotificationEntity,
   AuditEntity,
   LoginHistoryEntity,
+  CompetitionJoinEntity,
 ];

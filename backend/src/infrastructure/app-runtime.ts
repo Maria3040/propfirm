@@ -12,6 +12,7 @@ import {
   AuditEntity,
   BreachEntity,
   ChallengeEntity,
+  CompetitionJoinEntity,
   EquitySnapshotEntity,
   NotificationEntity,
   OrderEntity,
@@ -68,6 +69,8 @@ export class AppRuntime implements OnModuleInit {
     @InjectRepository(NotificationEntity)
     private readonly notifications: Repository<NotificationEntity>,
     @InjectRepository(AuditEntity) private readonly audits: Repository<AuditEntity>,
+    @InjectRepository(CompetitionJoinEntity)
+    private readonly competitionJoins: Repository<CompetitionJoinEntity>,
   ) {}
 
   async onModuleInit() {
@@ -87,6 +90,7 @@ export class AppRuntime implements OnModuleInit {
       'payouts',
       'notifications',
       'audithub',
+      'competitions',
     ]) {
       await this.dataSource.query(`CREATE SCHEMA IF NOT EXISTS ${s}`);
     }
@@ -111,6 +115,7 @@ export class AppRuntime implements OnModuleInit {
         createdAt: new Date(),
       }),
     );
+    return ok;
   }
 
   private async audit(event: any) {
@@ -667,6 +672,59 @@ export class AppRuntime implements OnModuleInit {
   }
   get breachRepo() {
     return this.breaches;
+  }
+
+  async listJoinedCompetitionIds(traderId: string): Promise<string[]> {
+    const rows = await this.competitionJoins.find({
+      where: { traderId },
+      order: { createdAt: 'DESC' },
+    });
+    return rows.map((r) => r.competitionId);
+  }
+
+  async joinCompetition(opts: {
+    traderId: string;
+    competitionId: string;
+    competitionTitle: string;
+  }): Promise<{ joined: boolean; alreadyJoined: boolean; emailSent: boolean }> {
+    const trader = await this.traders.findOne({ where: { id: opts.traderId } });
+    if (!trader) throw new DomainError('trader not found');
+
+    const existing = await this.competitionJoins.findOne({
+      where: { traderId: opts.traderId, competitionId: opts.competitionId },
+    });
+    if (existing) {
+      return { joined: true, alreadyJoined: true, emailSent: false };
+    }
+
+    await this.competitionJoins.save(
+      this.competitionJoins.create({
+        id: uuidv4(),
+        traderId: opts.traderId,
+        competitionId: opts.competitionId,
+        competitionTitle: opts.competitionTitle,
+        createdAt: new Date(),
+      }),
+    );
+
+    const subject = `You're in: ${opts.competitionTitle}`;
+    const body = [
+      `Hi ${trader.displayName},`,
+      '',
+      `You joined "${opts.competitionTitle}".`,
+      '',
+      'We will email you again when the competition starts with your credentials and rules reminder.',
+      '',
+      '— PropFirm Competitions',
+    ].join('\n');
+
+    const emailSent = await this.notify(trader.email, subject, body);
+
+    return {
+      joined: true,
+      alreadyJoined: false,
+      emailSent,
+    };
   }
 
   async simulateTrade(
