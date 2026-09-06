@@ -1,6 +1,8 @@
 # PropFirm — FundingPips-style evaluation platform
 
-Modular monolith with **DDD**: NestJS + TypeORM + Postgres backend, Next.js + React REST frontend.
+Modular monolith with **DDD**: NestJS + TypeORM + Postgres backend, Next.js + React frontend.
+
+**Branches:** `master` = REST API · `feat/backend-nestjs-graphql-typeorm-postgres_frontend-nextjs-apollo` = Nest GraphQL (Apollo) + Next Apollo Client (`/graphql` playground, `/graphql-lab` UI).
 
 | Doc | Purpose |
 |-----|---------|
