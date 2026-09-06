@@ -1,9 +1,11 @@
 export type CompetitionStatus = 'ongoing' | 'ended' | 'upcoming';
 
+export type CompetitionKind = 'Monthly Competition' | 'Community Championship';
+
 export type Competition = {
   id: string;
   title: string;
-  kind: 'Monthly Competition';
+  kind: CompetitionKind;
   host: string;
   platform: string;
   status: CompetitionStatus;
@@ -193,8 +195,111 @@ function buildArchiveFillers(): Competition[] {
 /** Demo catalog aligned with FundingPips monthly competitions (+ archive for list UX). */
 export const COMPETITIONS: Competition[] = [...CORE, ...buildArchiveFillers()];
 
+const CHAMPIONSHIP_ABOUT = `
+<p>Community Championship</p>
+<p>Compete with traders worldwide on Match Trader. Free entry.</p>
+<ul>
+  <li>10% Maximum Loss Limit</li>
+  <li>5% Maximum Daily Loss Limit</li>
+  <li>EAs are not allowed</li>
+</ul>
+<p>Only one account per person is permitted.</p>
+`;
+
+/** Community championships (Championships tab) — FundingPips-style cards. */
+export const CHAMPIONSHIPS: Competition[] = [
+  {
+    id: '188bd703-821c-41da-bd9f-346293f0e6e5',
+    title: 'Community Championship January 2025',
+    kind: 'Community Championship',
+    host: 'PropFirm',
+    platform: 'matchtrader',
+    status: 'ended',
+    startsAt: '2025-01-01T00:00:00.000Z',
+    endsAt: '2025-01-31T15:00:00.000Z',
+    participants: 17900,
+    entry: 'Free',
+    prizeHtml: DEFAULT_PRIZE,
+    aboutHtml: CHAMPIONSHIP_ABOUT,
+  },
+  {
+    id: 'champ-2024-12',
+    title: 'Community Championship December 2024',
+    kind: 'Community Championship',
+    host: 'PropFirm',
+    platform: 'matchtrader',
+    status: 'ended',
+    startsAt: '2024-12-01T00:00:00.000Z',
+    endsAt: '2024-12-31T15:00:00.000Z',
+    participants: 16240,
+    entry: 'Free',
+    prizeHtml: DEFAULT_PRIZE,
+    aboutHtml: CHAMPIONSHIP_ABOUT,
+  },
+  {
+    id: 'champ-2024-11',
+    title: 'Community Championship November 2024',
+    kind: 'Community Championship',
+    host: 'PropFirm',
+    platform: 'matchtrader',
+    status: 'ended',
+    startsAt: '2024-11-01T00:00:00.000Z',
+    endsAt: '2024-11-30T15:00:00.000Z',
+    participants: 14880,
+    entry: 'Free',
+    prizeHtml: DEFAULT_PRIZE,
+    aboutHtml: CHAMPIONSHIP_ABOUT,
+  },
+  {
+    id: 'champ-2025-02',
+    title: 'Community Championship February 2025',
+    kind: 'Community Championship',
+    host: 'PropFirm',
+    platform: 'matchtrader',
+    status: 'ended',
+    startsAt: '2025-02-01T00:00:00.000Z',
+    endsAt: '2025-02-28T15:00:00.000Z',
+    participants: 19120,
+    entry: 'Free',
+    prizeHtml: DEFAULT_PRIZE,
+    aboutHtml: CHAMPIONSHIP_ABOUT,
+  },
+  {
+    id: 'champ-2025-03',
+    title: 'Community Championship March 2025',
+    kind: 'Community Championship',
+    host: 'PropFirm',
+    platform: 'matchtrader',
+    status: 'ended',
+    startsAt: '2025-03-01T00:00:00.000Z',
+    endsAt: '2025-03-31T15:00:00.000Z',
+    participants: 20550,
+    entry: 'Free',
+    prizeHtml: DEFAULT_PRIZE,
+    aboutHtml: CHAMPIONSHIP_ABOUT,
+  },
+  {
+    id: 'champ-2026-10-upcoming',
+    title: 'Community Championship October 2026',
+    kind: 'Community Championship',
+    host: 'PropFirm',
+    platform: 'matchtrader',
+    status: 'upcoming',
+    startsAt: '2026-10-01T00:00:00.000Z',
+    endsAt: '2026-10-31T15:00:00.000Z',
+    participants: 2840,
+    entry: 'Free',
+    prizeHtml: DEFAULT_PRIZE,
+    aboutHtml: CHAMPIONSHIP_ABOUT,
+  },
+];
+
 export function findCompetition(id: string) {
-  return COMPETITIONS.find((c) => c.id === id);
+  return COMPETITIONS.find((c) => c.id === id) || CHAMPIONSHIPS.find((c) => c.id === id);
+}
+
+export function allCompetitionCatalog(): Competition[] {
+  return [...COMPETITIONS, ...CHAMPIONSHIPS];
 }
 
 export function formatCountdown(endsAt: string, now = Date.now()) {

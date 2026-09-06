@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, getSession } from '@/lib/api';
 import {
+  CHAMPIONSHIPS,
   COMPETITIONS,
   formatCountdown,
   formatShortDate,
@@ -13,10 +14,18 @@ import {
 } from '@/lib/competitions-data';
 import { useFilteredPagination } from '@/lib/list-utils';
 import { VirtualizedList } from '@/components/VirtualizedList';
+import { PageNumberPager } from '@/components/PageNumberPager';
 
 type Tab = 'joined' | 'propfirm' | 'championships' | 'hosted';
 type ModalKind = 'prize' | 'about' | null;
 type StatusFilter = 'all' | CompetitionStatus;
+type SortKey = 'startsDesc' | 'startsAsc' | 'titleAsc' | 'participantsDesc' | 'status';
+
+const STATUS_RANK: Record<CompetitionStatus, number> = {
+  upcoming: 0,
+  ongoing: 1,
+  ended: 2,
+};
 
 function StatusDot({ status }: { status: CompetitionStatus }) {
   return (
@@ -246,6 +255,7 @@ export default function CompetitionsPage() {
   const [now, setNow] = useState(() => Date.now());
   const [modal, setModal] = useState<ModalKind>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('startsDesc');
   const [joinedIds, setJoinedIds] = useState<Set<string>>(new Set());
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [joinMsg, setJoinMsg] = useState('');
@@ -259,6 +269,26 @@ export default function CompetitionsPage() {
       c.status.includes(q)
     );
   }, []);
+
+  const compare = useMemo(() => {
+    switch (sortKey) {
+      case 'startsAsc':
+        return (a: Competition, b: Competition) =>
+          new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
+      case 'titleAsc':
+        return (a: Competition, b: Competition) => a.title.localeCompare(b.title);
+      case 'participantsDesc':
+        return (a: Competition, b: Competition) => b.participants - a.participants;
+      case 'status':
+        return (a: Competition, b: Competition) =>
+          STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
+          new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime();
+      case 'startsDesc':
+      default:
+        return (a: Competition, b: Competition) =>
+          new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime();
+    }
+  }, [sortKey]);
 
   useEffect(() => {
     const session = getSession();
@@ -287,17 +317,25 @@ export default function CompetitionsPage() {
   );
 
   const tabList = useMemo(() => {
-    if (tab === 'championships' || tab === 'hosted') return [] as Competition[];
-    if (tab === 'joined') return COMPETITIONS.filter((c) => joinedIds.has(c.id));
+    if (tab === 'hosted') return [] as Competition[];
+    if (tab === 'championships') return CHAMPIONSHIPS;
+    if (tab === 'joined') {
+      return [...COMPETITIONS, ...CHAMPIONSHIPS].filter((c) => joinedIds.has(c.id));
+    }
     return COMPETITIONS;
   }, [tab, joinedIds]);
+
+  const showFeatured = tab === 'propfirm';
 
   const statusScoped = useMemo(() => {
     if (statusFilter === 'all') return tabList;
     return tabList.filter((c) => c.status === statusFilter);
   }, [tabList, statusFilter]);
 
-  const listState = useFilteredPagination(statusScoped, matchCompetition, 12);
+  const listState = useFilteredPagination(statusScoped, matchCompetition, {
+    initialPageSize: 12,
+    compare,
+  });
 
   async function joinCompetition(c: Competition) {
     setJoinErr('');
@@ -340,20 +378,22 @@ export default function CompetitionsPage() {
       </div>
 
       <div className="comp-body">
-        <div className="comp-featured-wrap">
-          <FeaturedCard
-            c={featured}
-            countdown={formatCountdown(
-              featured.status === 'upcoming' ? featured.startsAt : featured.endsAt,
-              now,
-            )}
-            joined={joinedIds.has(featured.id)}
-            joining={joiningId === featured.id}
-            onJoin={() => joinCompetition(featured)}
-            onShowPrizes={() => setModal('prize')}
-            onMoreInfo={() => setModal('about')}
-          />
-        </div>
+        {showFeatured && (
+          <div className="comp-featured-wrap">
+            <FeaturedCard
+              c={featured}
+              countdown={formatCountdown(
+                featured.status === 'upcoming' ? featured.startsAt : featured.endsAt,
+                now,
+              )}
+              joined={joinedIds.has(featured.id)}
+              joining={joiningId === featured.id}
+              onJoin={() => joinCompetition(featured)}
+              onShowPrizes={() => setModal('prize')}
+              onMoreInfo={() => setModal('about')}
+            />
+          </div>
+        )}
 
         {(joinMsg || joinErr) && (
           <p className={joinErr ? 'err' : 'comp-join-toast'} role="status">
@@ -375,7 +415,10 @@ export default function CompetitionsPage() {
                 key={id}
                 type="button"
                 className={tab === id ? 'on' : ''}
-                onClick={() => setTab(id)}
+                onClick={() => {
+                  setTab(id);
+                  listState.setPage(1);
+                }}
               >
                 {label}
               </button>
@@ -409,6 +452,22 @@ export default function CompetitionsPage() {
             </select>
           </label>
           <label className="comp-filter">
+            Sort
+            <select
+              value={sortKey}
+              onChange={(e) => {
+                setSortKey(e.target.value as SortKey);
+                listState.setPage(1);
+              }}
+            >
+              <option value="startsDesc">Newest start</option>
+              <option value="startsAsc">Oldest start</option>
+              <option value="titleAsc">Title A–Z</option>
+              <option value="participantsDesc">Most participants</option>
+              <option value="status">Status</option>
+            </select>
+          </label>
+          <label className="comp-filter">
             Page size
             <select
               value={listState.pageSize}
@@ -431,8 +490,26 @@ export default function CompetitionsPage() {
               <p>
                 {tab === 'joined'
                   ? 'No joined competitions yet. Join an upcoming event to see it here.'
-                  : 'No competitions match this filter.'}
+                  : tab === 'hosted'
+                    ? 'You have not hosted any competitions yet.'
+                    : 'No competitions match this filter.'}
               </p>
+            </div>
+          ) : tab === 'championships' ? (
+            <div className="comp-grid">
+              {listState.pageItems.map((c) => (
+                <CompetitionCard
+                  key={c.id}
+                  c={c}
+                  countdown={formatCountdown(
+                    c.status === 'upcoming' ? c.startsAt : c.endsAt,
+                    now,
+                  )}
+                  joined={joinedIds.has(c.id)}
+                  joining={joiningId === c.id}
+                  onJoin={() => joinCompetition(c)}
+                />
+              ))}
             </div>
           ) : (
             <VirtualizedList
@@ -458,41 +535,24 @@ export default function CompetitionsPage() {
           )}
         </section>
 
-        {listState.pageCount > 1 && (
-          <div className="comp-pager">
-            <button
-              type="button"
-              className="comp-btn-ghost"
-              disabled={listState.page <= 1}
-              onClick={() => listState.setPage(listState.page - 1)}
-            >
-              Previous
-            </button>
-            <span>
-              Page {listState.page} of {listState.pageCount}
-            </span>
-            <button
-              type="button"
-              className="comp-btn-ghost"
-              disabled={listState.page >= listState.pageCount}
-              onClick={() => listState.setPage(listState.page + 1)}
-            >
-              Next
-            </button>
-          </div>
-        )}
+        <PageNumberPager
+          page={listState.page}
+          pageCount={listState.pageCount}
+          pageNumbers={listState.pageNumbers}
+          onPageChange={listState.setPage}
+        />
       </div>
 
       <CompModal
         open={modal === 'prize'}
         title="Prize pool for this competition"
-        html={featured.prizeHtml}
+        html={(showFeatured ? featured : listState.pageItems[0] || featured).prizeHtml}
         onClose={() => setModal(null)}
       />
       <CompModal
         open={modal === 'about'}
         title="About this Competition"
-        html={featured.aboutHtml}
+        html={(showFeatured ? featured : listState.pageItems[0] || featured).aboutHtml}
         onClose={() => setModal(null)}
       />
     </div>
