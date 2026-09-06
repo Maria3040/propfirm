@@ -353,6 +353,15 @@ export function BasketCheckout({
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [coupon, setCoupon] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountAmount: number;
+    finalTotal: number;
+    message: string;
+    kind: string;
+  } | null>(null);
+  const [couponBusy, setCouponBusy] = useState(false);
+  const [couponMsg, setCouponMsg] = useState('');
   const [billing, setBilling] = useState({
     firstName: '',
     lastName: '',
@@ -365,6 +374,7 @@ export function BasketCheckout({
 
   const count = basket.reduce((n, i) => n + i.qty, 0);
   const total = basket.reduce((n, i) => n + i.unitPrice * i.qty, 0);
+  const payableTotal = appliedCoupon ? appliedCoupon.finalTotal : total;
   const allocSize = basket.reduce((n, i) => n + i.accountSize * i.qty, 0);
   const allocPct = Math.min(100, (allocSize / MAX_ALLOCATION) * 100);
 
@@ -442,6 +452,51 @@ export function BasketCheckout({
     }
   }
 
+  async function applyCoupon() {
+    setCouponMsg('');
+    setErr('');
+    const code = coupon.trim();
+    if (!code) {
+      setCouponMsg('Enter a coupon code');
+      return;
+    }
+    setCouponBusy(true);
+    try {
+      const res = await api<{
+        valid: boolean;
+        code: string;
+        kind: string;
+        discountAmount: number;
+        finalTotal: number;
+        message: string;
+      }>('/api/coupons/validate', {
+        method: 'POST',
+        auth: false,
+        body: JSON.stringify({ code, subtotal: total }),
+      });
+      setAppliedCoupon({
+        code: res.code,
+        discountAmount: res.discountAmount,
+        finalTotal: res.finalTotal,
+        message: res.message,
+        kind: res.kind,
+      });
+      setCoupon(res.code);
+      setCouponMsg(res.message);
+    } catch (ex: any) {
+      setAppliedCoupon(null);
+      setCouponMsg(ex.message || 'Invalid coupon');
+    } finally {
+      setCouponBusy(false);
+    }
+  }
+
+  function clearCoupon() {
+    setAppliedCoupon(null);
+    setCouponMsg('');
+    setCoupon('');
+  }
+
   async function pay() {
     if (!basket.length) return;
     if (!country) {
@@ -467,7 +522,7 @@ export function BasketCheckout({
       setErr('');
       try {
         const invoice = createCryptoInvoice({
-          amountUsd: total,
+          amountUsd: payableTotal,
           currency,
           basket,
           email,
@@ -488,7 +543,20 @@ export function BasketCheckout({
     setErr('');
     try {
       let lastChallenge: string | undefined;
+      let flatCouponUsed = false;
       for (const item of basket) {
+        const lineTotal = item.unitPrice * item.qty;
+        let couponCode: string | undefined;
+        if (appliedCoupon) {
+          if (appliedCoupon.kind === 'flat') {
+            if (!flatCouponUsed) {
+              couponCode = appliedCoupon.code;
+              flatCouponUsed = true;
+            }
+          } else {
+            couponCode = appliedCoupon.code;
+          }
+        }
         const order = await api<{ orderId: string }>('/api/orders', {
           method: 'POST',
           body: JSON.stringify({
@@ -496,8 +564,10 @@ export function BasketCheckout({
             addonSwapFree: item.swapFree,
             platform: item.platform,
             quantity: item.qty,
+            couponCode,
           }),
         });
+        void lineTotal;
         const paid = await api<{ challengeId?: string }>(
           `/api/orders/${order.orderId}/confirm`,
           { method: 'POST' },
@@ -821,10 +891,16 @@ export function BasketCheckout({
                   <dt>Subtotal</dt>
                   <dd>{money(total, currency)}</dd>
                 </div>
+                {appliedCoupon ? (
+                  <div>
+                    <dt>Discount ({appliedCoupon.code})</dt>
+                    <dd>−{money(appliedCoupon.discountAmount, currency)}</dd>
+                  </div>
+                ) : null}
               </dl>
               <div className="bc-summary-total">
                 <span>Total</span>
-                <strong>{money(total, currency)}</strong>
+                <strong>{money(payableTotal, currency)}</strong>
               </div>
               <p className="bc-charge">You will be charged in {currency}.</p>
 
@@ -883,13 +959,34 @@ export function BasketCheckout({
                     <input
                       id="cart-coupon"
                       value={coupon}
-                      onChange={(e) => setCoupon(e.target.value.toUpperCase())}
+                      onChange={(e) => {
+                        setCoupon(e.target.value.toUpperCase());
+                        if (appliedCoupon) setAppliedCoupon(null);
+                      }}
                       autoComplete="off"
+                      placeholder="WELCOME10"
                     />
-                    <button type="button" disabled={!coupon.trim()}>
-                      Apply
-                    </button>
+                    {appliedCoupon ? (
+                      <button type="button" onClick={clearCoupon}>
+                        Remove
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!coupon.trim() || couponBusy || total <= 0}
+                        onClick={() => void applyCoupon()}
+                      >
+                        {couponBusy ? '…' : 'Apply'}
+                      </button>
+                    )}
                   </div>
+                  {couponMsg ? (
+                    <p className={appliedCoupon ? 'bc-coupon-ok' : 'err'} role="status">
+                      {couponMsg}
+                    </p>
+                  ) : (
+                    <p className="bc-coupon-hint">Try WELCOME10, SAVE20, or FLAT50</p>
+                  )}
                 </section>
 
                 <section className="bc-pay-methods" aria-label="Payment methods">

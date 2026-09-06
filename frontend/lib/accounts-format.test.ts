@@ -3,6 +3,7 @@ import {
   accountNo,
   isArchived,
   money,
+  moneyPlain,
   phaseLabel,
   sizeLabel,
   statusClass,
@@ -18,6 +19,12 @@ describe('accounts-format (unit / edge)', () => {
   it('formats signed money including negatives', () => {
     expect(money(12.5)).toContain('12.50');
     expect(money(-3)).toMatch(/-/);
+  });
+
+  it('does not throw on undefined/null equity (payouts request bug)', () => {
+    expect(moneyPlain(undefined)).toBe('$0.00');
+    expect(moneyPlain(null)).toBe('$0.00');
+    expect(money(undefined as unknown as number)).toBe('$0.00');
   });
 
   it('maps sku fragments to challenge types', () => {

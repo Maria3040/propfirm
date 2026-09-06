@@ -2523,6 +2523,20 @@ body:has(.cfg-page) .main {
   pointer-events: none;
 }
 
+.bc-coupon-hint,
+.bc-coupon-ok {
+  margin: 0.45rem 0 0;
+  font-size: 0.8rem;
+}
+
+.bc-coupon-hint {
+  color: var(--muted);
+}
+
+.bc-coupon-ok {
+  color: #059669;
+}
+
 .bc-pay-methods {
   display: flex;
   flex-direction: column;

@@ -17,17 +17,21 @@ export function sizeLabel(n: number) {
   return n >= 1000 ? `$${n / 1000}k` : `$${n}`;
 }
 
-export function money(n: number, signed = true) {
-  const sign = signed && n > 0 ? '+' : '';
-  const prefix = n < 0 ? '-' : sign;
-  return `${prefix}$${Math.abs(n).toLocaleString(undefined, {
+export function money(n: number | null | undefined, signed = true) {
+  const v = Number(n);
+  const safe = Number.isFinite(v) ? v : 0;
+  const sign = signed && safe > 0 ? '+' : '';
+  const prefix = safe < 0 ? '-' : sign;
+  return `${prefix}$${Math.abs(safe).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 }
 
-export function moneyPlain(n: number) {
-  return `$${n.toLocaleString(undefined, {
+export function moneyPlain(n: number | null | undefined) {
+  const v = Number(n);
+  const safe = Number.isFinite(v) ? v : 0;
+  return `$${safe.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
