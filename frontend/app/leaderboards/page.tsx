@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ACCOUNT_SIZES,
   LEADERBOARD_TRADERS,
@@ -11,8 +11,75 @@ import {
   type AccountSize,
   type LeaderboardTrader,
 } from '@/lib/leaderboards-data';
+import { useFilteredPagination } from '@/lib/list-utils';
+import { PageNumberPager } from '@/components/PageNumberPager';
 
 type RankMode = 'profit' | 'rewards';
+type SortCol =
+  | 'rank'
+  | 'name'
+  | 'country'
+  | 'metric'
+  | 'profitPct'
+  | 'winRatio'
+  | 'pair'
+  | 'avgWin'
+  | 'avgLoss'
+  | 'avgDuration'
+  | 'trades'
+  | 'losingStreak'
+  | 'winningStreak';
+type SortDir = 'asc' | 'desc';
+
+const DEFAULT_DIR: Record<SortCol, SortDir> = {
+  rank: 'asc',
+  name: 'asc',
+  country: 'asc',
+  metric: 'desc',
+  profitPct: 'desc',
+  winRatio: 'desc',
+  pair: 'asc',
+  avgWin: 'desc',
+  avgLoss: 'asc',
+  avgDuration: 'asc',
+  trades: 'desc',
+  losingStreak: 'desc',
+  winningStreak: 'desc',
+};
+
+function parseDurationMinutes(s: string): number {
+  const h = /(\d+)\s*h/.exec(s);
+  const m = /(\d+)\s*m/.exec(s);
+  return (h ? Number(h[1]) * 60 : 0) + (m ? Number(m[1]) : 0);
+}
+
+function SortableTh({
+  col,
+  label,
+  activeCol,
+  dir,
+  align = 'start',
+  onSort,
+}: {
+  col: SortCol;
+  label: string;
+  activeCol: SortCol;
+  dir: SortDir;
+  align?: 'start' | 'end';
+  onSort: (col: SortCol) => void;
+}) {
+  const active = activeCol === col;
+  return (
+    <th className={align === 'end' ? 'end' : undefined} aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className={`lb-th-btn${active ? ' on' : ''}`} onClick={() => onSort(col)}>
+        <span>{label}</span>
+        <span className="lb-th-arrow" aria-hidden>
+          {active ? (dir === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </button>
+    </th>
+  );
+}
 
 function FlagBadge({ code }: { code: string }) {
   return (
@@ -120,20 +187,108 @@ export default function LeaderboardsPage() {
   const [currency] = useState('USD');
   const [accountSize, setAccountSize] = useState<AccountSize>('All');
   const [rankMode, setRankMode] = useState<RankMode>('profit');
+  const [sortCol, setSortCol] = useState<SortCol>('metric');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  const traders = useMemo(() => {
-    const filtered =
-      accountSize === 'All'
-        ? LEADERBOARD_TRADERS
-        : LEADERBOARD_TRADERS.filter((t) => t.accountSize === accountSize);
-    const sorted = [...filtered].sort((a, b) => {
-      if (rankMode === 'rewards') return (b.rewards || 0) - (a.rewards || 0);
-      return b.profit - a.profit;
-    });
+  const sizeScoped = useMemo(() => {
+    if (accountSize === 'All') return LEADERBOARD_TRADERS;
+    return LEADERBOARD_TRADERS.filter((t) => t.accountSize === accountSize);
+  }, [accountSize]);
+
+  const matchTrader = useCallback((t: LeaderboardTrader, q: string) => {
+    return (
+      t.name.toLowerCase().includes(q) ||
+      t.country.toLowerCase().includes(q) ||
+      t.pair.toLowerCase().includes(q) ||
+      t.accountSize.toLowerCase().includes(q)
+    );
+  }, []);
+
+  const compare = useMemo(() => {
+    const metric = (t: LeaderboardTrader) =>
+      rankMode === 'rewards' ? t.rewards || 0 : t.profit;
+
+    const value = (t: LeaderboardTrader): number | string => {
+      switch (sortCol) {
+        case 'rank':
+          return metric(t);
+        case 'name':
+          return t.name.toLowerCase();
+        case 'country':
+          return t.country;
+        case 'metric':
+          return metric(t);
+        case 'profitPct':
+          return t.profitPct;
+        case 'winRatio':
+          return t.winRatio;
+        case 'pair':
+          return t.pair;
+        case 'avgWin':
+          return t.avgWin;
+        case 'avgLoss':
+          return t.avgLoss;
+        case 'avgDuration':
+          return parseDurationMinutes(t.avgDuration);
+        case 'trades':
+          return t.trades;
+        case 'losingStreak':
+          return t.losingStreak;
+        case 'winningStreak':
+          return t.winningStreak;
+        default:
+          return metric(t);
+      }
+    };
+
+    return (a: LeaderboardTrader, b: LeaderboardTrader) => {
+      const av = value(a);
+      const bv = value(b);
+      let cmp = 0;
+      if (typeof av === 'string' && typeof bv === 'string') cmp = av.localeCompare(bv);
+      else cmp = Number(av) - Number(bv);
+      // For "rank" column, sort by metric desc when dir asc means best-first (rank 1 first)
+      if (sortCol === 'rank') {
+        cmp = Number(bv) - Number(av);
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    };
+  }, [sortCol, sortDir, rankMode]);
+
+  const listState = useFilteredPagination(sizeScoped, matchTrader, {
+    initialPageSize: 10,
+    compare,
+  });
+
+  function onSortColumn(col: SortCol) {
+    if (sortCol === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir(DEFAULT_DIR[col]);
+    }
+    listState.setPage(1);
+  }
+
+  /** Global ranks from the full filtered+sorted set (podium uses top 3). */
+  const rankedAll = useMemo(() => {
+    const q = listState.query.trim().toLowerCase();
+    const filtered = !q ? sizeScoped : sizeScoped.filter((t) => matchTrader(t, q));
+    const sorted = [...filtered].sort(compare);
     return sorted.map((t, i) => ({ ...t, rank: i + 1 }));
-  }, [accountSize, rankMode]);
+  }, [sizeScoped, listState.query, matchTrader, compare]);
 
-  const podium = traders.slice(0, 3);
+  const podium = rankedAll.slice(0, 3);
+
+  const pageRows = useMemo(
+    () =>
+      listState.pageItems.map((t, i) => ({
+        ...t,
+        rank: listState.startIndex + i + 1,
+      })),
+    [listState.pageItems, listState.startIndex],
+  );
 
   return (
     <div className="lb-page">
@@ -151,7 +306,10 @@ export default function LeaderboardsPage() {
             label="Account Size:"
             options={ACCOUNT_SIZES}
             value={accountSize}
-            onChange={(v) => setAccountSize(v as AccountSize)}
+            onChange={(v) => {
+              setAccountSize(v as AccountSize);
+              listState.setPage(1);
+            }}
           />
         </div>
       </header>
@@ -197,8 +355,43 @@ export default function LeaderboardsPage() {
           <FilterSelector
             options={['Profit', 'Rewards']}
             value={rankMode === 'profit' ? 'Profit' : 'Rewards'}
-            onChange={(v) => setRankMode(v === 'Rewards' ? 'rewards' : 'profit')}
+            onChange={(v) => {
+              const next = v === 'Rewards' ? 'rewards' : 'profit';
+              setRankMode(next);
+              setSortCol('metric');
+              setSortDir('desc');
+              listState.setPage(1);
+            }}
           />
+        </div>
+
+        <div className="lb-toolbar">
+          <label className="lb-search">
+            <span className="sr-only">Search traders</span>
+            <input
+              type="search"
+              placeholder="Filter by name, country, pair…"
+              value={listState.query}
+              onChange={(e) => listState.setQuery(e.target.value)}
+            />
+          </label>
+          <label className="lb-sort">
+            Page size
+            <select
+              value={listState.pageSize}
+              onChange={(e) => listState.setPageSize(Number(e.target.value))}
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={40}>40</option>
+            </select>
+          </label>
+          <p className="lb-toolbar-meta">
+            {listState.filteredTotal} traders · page {listState.page}/{listState.pageCount}
+            {' · '}
+            sorted by {sortCol} {sortDir === 'asc' ? '↑' : '↓'} (click column headers)
+          </p>
         </div>
 
         <div className="lb-table-wrap">
@@ -206,76 +399,91 @@ export default function LeaderboardsPage() {
             <table className="lb-table">
               <thead>
                 <tr>
-                  <th>Rank</th>
-                  <th>Trader</th>
-                  <th>Country</th>
-                  <th className="end">{rankMode === 'rewards' ? 'Rewards' : 'Profit'}</th>
-                  <th className="end">Profit %</th>
-                  <th>Win Ratio</th>
-                  <th>Pair</th>
-                  <th className="end">Avg. Win</th>
-                  <th className="end">Avg. Loss</th>
-                  <th className="end">Avg. Duration</th>
-                  <th className="end">Trades</th>
-                  <th className="end">Losing Streak</th>
-                  <th className="end">Winning Streak</th>
+                  <SortableTh col="rank" label="Rank" activeCol={sortCol} dir={sortDir} onSort={onSortColumn} />
+                  <SortableTh col="name" label="Trader" activeCol={sortCol} dir={sortDir} onSort={onSortColumn} />
+                  <SortableTh col="country" label="Country" activeCol={sortCol} dir={sortDir} onSort={onSortColumn} />
+                  <SortableTh
+                    col="metric"
+                    label={rankMode === 'rewards' ? 'Rewards' : 'Profit'}
+                    activeCol={sortCol}
+                    dir={sortDir}
+                    align="end"
+                    onSort={onSortColumn}
+                  />
+                  <SortableTh col="profitPct" label="Profit %" activeCol={sortCol} dir={sortDir} align="end" onSort={onSortColumn} />
+                  <SortableTh col="winRatio" label="Win Ratio" activeCol={sortCol} dir={sortDir} onSort={onSortColumn} />
+                  <SortableTh col="pair" label="Pair" activeCol={sortCol} dir={sortDir} onSort={onSortColumn} />
+                  <SortableTh col="avgWin" label="Avg. Win" activeCol={sortCol} dir={sortDir} align="end" onSort={onSortColumn} />
+                  <SortableTh col="avgLoss" label="Avg. Loss" activeCol={sortCol} dir={sortDir} align="end" onSort={onSortColumn} />
+                  <SortableTh col="avgDuration" label="Avg. Duration" activeCol={sortCol} dir={sortDir} align="end" onSort={onSortColumn} />
+                  <SortableTh col="trades" label="Trades" activeCol={sortCol} dir={sortDir} align="end" onSort={onSortColumn} />
+                  <SortableTh col="losingStreak" label="Losing Streak" activeCol={sortCol} dir={sortDir} align="end" onSort={onSortColumn} />
+                  <SortableTh col="winningStreak" label="Winning Streak" activeCol={sortCol} dir={sortDir} align="end" onSort={onSortColumn} />
                 </tr>
               </thead>
               <tbody>
-                {traders.map((t) => (
-                  <tr key={`${t.rank}-${t.name}`}>
-                    <td>
-                      <span
-                        className={`lb-rank muted${t.rank <= 3 ? ` r${t.rank}` : ''}`}
-                        style={{ width: 'auto', fontSize: '0.875rem' }}
-                      >
-                        {t.rank}
-                      </span>
-                    </td>
-                    <td>
-                      <strong>{t.name}</strong>
-                    </td>
-                    <td>
-                      <FlagBadge code={t.country} />
-                    </td>
-                    <td className="end">
-                      <span className="lb-pos">
-                        {rankMode === 'rewards'
-                          ? formatMoney(t.rewards || 0, true)
-                          : formatMoney(t.profit, true)}
-                      </span>
-                    </td>
-                    <td className="end">
-                      <span className="lb-pos">{formatPct(t.profitPct)}</span>
-                    </td>
-                    <td>
-                      <WinRatioCell ratio={t.winRatio} />
-                    </td>
-                    <td>
-                      <span className="lb-pair">{t.pair}</span>
-                    </td>
-                    <td className="end">
-                      <span className="lb-pos">{formatMoney(t.avgWin)}</span>
-                    </td>
-                    <td className="end">
-                      <span className={t.avgLoss < 0 ? 'lb-neg' : 'lb-pos'}>{formatMoney(t.avgLoss, true)}</span>
-                    </td>
-                    <td className="end">{t.avgDuration}</td>
-                    <td className="end">{t.trades}</td>
-                    <td className="end">
-                      <span className={t.losingStreak > 0 ? 'lb-neg' : 'lb-pos'}>{t.losingStreak}</span>
-                    </td>
-                    <td className="end">
-                      <span className="lb-pos">{t.winningStreak}</span>
+                {pageRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={13} className="lb-empty-cell">
+                      No traders match this filter.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  pageRows.map((t) => (
+                    <tr key={`${t.rank}-${t.name}`}>
+                      <td>
+                        <span
+                          className={`lb-rank muted${t.rank <= 3 ? ` r${t.rank}` : ''}`}
+                          style={{ width: 'auto', fontSize: '0.875rem' }}
+                        >
+                          {t.rank}
+                        </span>
+                      </td>
+                      <td>
+                        <strong>{t.name}</strong>
+                      </td>
+                      <td>
+                        <FlagBadge code={t.country} />
+                      </td>
+                      <td className="end">
+                        <span className="lb-pos">
+                          {rankMode === 'rewards'
+                            ? formatMoney(t.rewards || 0, true)
+                            : formatMoney(t.profit, true)}
+                        </span>
+                      </td>
+                      <td className="end">
+                        <span className="lb-pos">{formatPct(t.profitPct)}</span>
+                      </td>
+                      <td>
+                        <WinRatioCell ratio={t.winRatio} />
+                      </td>
+                      <td>
+                        <span className="lb-pair">{t.pair}</span>
+                      </td>
+                      <td className="end">
+                        <span className="lb-pos">{formatMoney(t.avgWin)}</span>
+                      </td>
+                      <td className="end">
+                        <span className={t.avgLoss < 0 ? 'lb-neg' : 'lb-pos'}>{formatMoney(t.avgLoss, true)}</span>
+                      </td>
+                      <td className="end">{t.avgDuration}</td>
+                      <td className="end">{t.trades}</td>
+                      <td className="end">
+                        <span className={t.losingStreak > 0 ? 'lb-neg' : 'lb-pos'}>{t.losingStreak}</span>
+                      </td>
+                      <td className="end">
+                        <span className="lb-pos">{t.winningStreak}</span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
 
           <ul className="lb-cards">
-            {traders.map((t) => (
+            {pageRows.map((t) => (
               <li key={`m-${t.rank}-${t.name}`} className="lb-card">
                 <div className="lb-card-left">
                   <span className={`lb-rank muted${t.rank <= 3 ? ` r${t.rank}` : ''}`} style={{ fontSize: '0.875rem' }}>
@@ -305,6 +513,13 @@ export default function LeaderboardsPage() {
             ))}
           </ul>
         </div>
+
+        <PageNumberPager
+          page={listState.page}
+          pageCount={listState.pageCount}
+          pageNumbers={listState.pageNumbers}
+          onPageChange={listState.setPage}
+        />
       </section>
     </div>
   );

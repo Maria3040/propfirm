@@ -27,8 +27,8 @@ export type NotableRecord = {
 
 export const ACCOUNT_SIZES: AccountSize[] = ['5k', '10k', '25k', '50k', '100k', '200k', 'All'];
 
-/** Demo standings inspired by FundingPips leaderboards. */
-export const LEADERBOARD_TRADERS: LeaderboardTrader[] = [
+/** Seed standings inspired by FundingPips leaderboards. */
+const CORE_TRADERS: LeaderboardTrader[] = [
   {
     rank: 1,
     name: 'MOHAMED D',
@@ -369,6 +369,42 @@ export const LEADERBOARD_TRADERS: LeaderboardTrader[] = [
     accountSize: '100k',
     rewards: 3000,
   },
+];
+
+const PAIRS = ['XAUUSD', 'EURUSD', 'NDX100', 'GER40', 'GBPUSD', 'USDJPY'];
+const COUNTRIES = ['US', 'GB', 'DE', 'IN', 'TR', 'MY', 'PL', 'RO', 'NL', 'PH', 'EE', 'MA'];
+const SIZES: Exclude<AccountSize, 'All'>[] = ['5k', '10k', '25k', '50k', '100k', '200k'];
+
+/** Extra rows so leaderboard filter / sort / pagination can be exercised. */
+function buildLeaderboardFillers(): LeaderboardTrader[] {
+  const out: LeaderboardTrader[] = [];
+  for (let i = 0; i < 48; i++) {
+    const profit = Math.max(800, 13000 - i * 210 + ((i * 37) % 400));
+    out.push({
+      rank: 21 + i,
+      name: `Trader ${String.fromCharCode(65 + (i % 26))}${i + 1}`,
+      country: COUNTRIES[i % COUNTRIES.length],
+      profit,
+      profitPct: Number((profit / (5000 + (i % 6) * 15000) * 100).toFixed(2)),
+      winRatio: Number((28 + ((i * 11) % 55)).toFixed(1)),
+      pair: PAIRS[i % PAIRS.length],
+      avgWin: 400 + (i % 20) * 80,
+      avgLoss: -(200 + (i % 15) * 40),
+      avgDuration: `${1 + (i % 8)}h ${10 + (i % 40)}m`,
+      trades: 12 + ((i * 17) % 400),
+      losingStreak: i % 12,
+      winningStreak: 1 + (i % 9),
+      accountSize: SIZES[i % SIZES.length],
+      rewards: Math.round(profit * 0.22),
+    });
+  }
+  return out;
+}
+
+/** Demo standings inspired by FundingPips leaderboards (+ fillers for list UX). */
+export const LEADERBOARD_TRADERS: LeaderboardTrader[] = [
+  ...CORE_TRADERS,
+  ...buildLeaderboardFillers(),
 ];
 
 export const NOTABLE_RECORDS: NotableRecord[] = [
