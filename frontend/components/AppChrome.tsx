@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { ChatWidget } from '@/components/ChatWidget';
+import { ApolloAppProvider } from '@/components/ApolloAppProvider';
 
 const APP_PREFIXES = [
   '/dashboard',
@@ -20,6 +21,7 @@ const APP_PREFIXES = [
   '/affiliate',
   '/settings',
   '/admin',
+  '/graphql-lab',
 ];
 
 const AUTH_PREFIXES = ['/login', '/register', '/forgot-password'];
@@ -35,40 +37,45 @@ function isAuthRoute(pathname: string) {
 export function AppChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname() || '/';
 
-  if (isAppRoute(pathname)) {
+  const body = (() => {
+    if (isAppRoute(pathname)) {
+      return (
+        <>
+          <AppShell>{children}</AppShell>
+          <ChatWidget />
+        </>
+      );
+    }
+
+    if (isAuthRoute(pathname)) {
+      return (
+        <>
+          {children}
+          <ChatWidget />
+        </>
+      );
+    }
+
     return (
       <>
-        <AppShell>{children}</AppShell>
+        <header className="top">
+          <Link href="/" className="brand">
+            PropFirm
+          </Link>
+          <nav>
+            <Link href="/">Catalog</Link>
+            <Link href="/accounts">Accounts</Link>
+            <Link href="/payouts">Payouts</Link>
+            <Link href="/admin">Admin</Link>
+            <Link href="/login">Login</Link>
+            <Link href="/graphql-lab">GraphQL</Link>
+          </nav>
+        </header>
+        <main className="main">{children}</main>
         <ChatWidget />
       </>
     );
-  }
+  })();
 
-  if (isAuthRoute(pathname)) {
-    return (
-      <>
-        {children}
-        <ChatWidget />
-      </>
-    );
-  }
-
-  return (
-    <>
-      <header className="top">
-        <Link href="/" className="brand">
-          PropFirm
-        </Link>
-        <nav>
-          <Link href="/">Catalog</Link>
-          <Link href="/accounts">Accounts</Link>
-          <Link href="/payouts">Payouts</Link>
-          <Link href="/admin">Admin</Link>
-          <Link href="/login">Login</Link>
-        </nav>
-      </header>
-      <main className="main">{children}</main>
-      <ChatWidget />
-    </>
-  );
+  return <ApolloAppProvider>{body}</ApolloAppProvider>;
 }
