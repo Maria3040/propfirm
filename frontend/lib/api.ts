@@ -85,15 +85,28 @@ export async function api<T>(
       headers,
       credentials: 'include',
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') throw e;
     const base = API || '(same-origin via Next rewrite)';
     throw new Error(
-      `Failed to reach API at ${base}${path}. Ensure Nest is on :6080 and open http://localhost:3100.`,
+      `Failed to reach API at ${base}${path}. Ensure the PropFirm API is on :6080 and open http://localhost:3100.`,
     );
   }
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || res.statusText);
+    let message = text || res.statusText;
+    try {
+      const j = JSON.parse(text) as { detail?: unknown };
+      if (typeof j.detail === 'string') message = j.detail;
+      else if (Array.isArray(j.detail)) {
+        message = j.detail
+          .map((d) => (typeof d === 'object' && d && 'msg' in d ? String((d as { msg: string }).msg) : String(d)))
+          .join('; ');
+      }
+    } catch {
+      /* keep raw */
+    }
+    throw new Error(message);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
