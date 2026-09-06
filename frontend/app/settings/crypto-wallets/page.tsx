@@ -1,16 +1,12 @@
 ﻿'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-
-type Wallet = {
-  id: string;
-  label: string;
-  network: string;
-  address: string;
-};
-
-const STORAGE_KEY = 'propfirm_crypto_wallets';
-const NETWORKS = ['USDT (TRC20)', 'USDT (ERC20)', 'BTC', 'ETH', 'USDC (ERC20)'] as const;
+import {
+  CRYPTO_WALLET_NETWORKS,
+  loadSavedCryptoWallets,
+  saveCryptoWallets,
+  type SavedCryptoWallet,
+} from '@/lib/crypto-wallets';
 
 function WalletIcon() {
   return (
@@ -28,30 +24,16 @@ function PlusIcon() {
   );
 }
 
-function loadWallets(): Wallet[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Wallet[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveWallets(wallets: Wallet[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(wallets));
-}
-
 export default function CryptoWalletsPage() {
-  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [wallets, setWallets] = useState<SavedCryptoWallet[]>([]);
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState('');
-  const [network, setNetwork] = useState<string>(NETWORKS[0]);
+  const [network, setNetwork] = useState<string>(CRYPTO_WALLET_NETWORKS[0]);
   const [address, setAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setWallets(loadWallets());
+    setWallets(loadSavedCryptoWallets());
   }, []);
 
   const onAdd = (e: FormEvent) => {
@@ -75,17 +57,17 @@ export default function CryptoWalletsPage() {
       },
     ];
     setWallets(next);
-    saveWallets(next);
+    saveCryptoWallets(next);
     setLabel('');
     setAddress('');
-    setNetwork(NETWORKS[0]);
+    setNetwork(CRYPTO_WALLET_NETWORKS[0]);
     setOpen(false);
   };
 
   const remove = (id: string) => {
     const next = wallets.filter((w) => w.id !== id);
     setWallets(next);
-    saveWallets(next);
+    saveCryptoWallets(next);
   };
 
   return (
@@ -101,7 +83,10 @@ export default function CryptoWalletsPage() {
         <div className="sb-empty">
           <WalletIcon />
           <h3>No Crypto Wallets</h3>
-          <p>Add your first crypto wallet to start receiving rewards via cryptocurrency. You can add up to 5 wallets.</p>
+          <p>
+            Add your first crypto wallet to start receiving rewards via cryptocurrency. You can add
+            up to 5 wallets. Saved wallets appear on the reward request form.
+          </p>
         </div>
       ) : (
         <ul className="scw-list">
@@ -143,7 +128,7 @@ export default function CryptoWalletsPage() {
                 value={network}
                 onChange={(e) => setNetwork(e.target.value)}
               >
-                {NETWORKS.map((n) => (
+                {CRYPTO_WALLET_NETWORKS.map((n) => (
                   <option key={n} value={n}>
                     {n}
                   </option>

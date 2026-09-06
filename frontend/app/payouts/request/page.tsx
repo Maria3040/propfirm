@@ -6,6 +6,13 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { accountNo, moneyPlain, sizeLabel, typeLabel } from '@/lib/accounts-format';
+import {
+  CRYPTO_WALLET_NETWORKS,
+  loadSavedCryptoWallets,
+  saveCryptoWallets,
+  toPayoutNetwork,
+  type SavedCryptoWallet,
+} from '@/lib/crypto-wallets';
 
 type EligibleAccount = {
   id: string;
@@ -15,6 +22,12 @@ type EligibleAccount = {
   equity: number;
   login: string | null;
   platform: string | null;
+  profitSplitPct?: number;
+  grossProfit?: number;
+  profitShareCap?: number;
+  alreadyRequested?: number;
+  profitShareAvailable?: number;
+  withdrawable?: number;
 };
 
 type EligibleResponse = {
@@ -27,8 +40,6 @@ const METHODS = [
   { id: 'rise', label: 'Rise' },
   { id: 'bank', label: 'Bank transfer' },
 ] as const;
-
-const NETWORKS = ['USDT TRC20', 'USDT ERC20', 'USDT BEP20', 'BTC', 'ETH'] as const;
 
 function CalIcon() {
   return (
@@ -54,6 +65,14 @@ function WalletIcon() {
   );
 }
 
+function accountWithdrawable(a: EligibleAccount, walletBal: number): number {
+  if (typeof a.withdrawable === 'number') return a.withdrawable;
+  if (typeof a.profitShareAvailable === 'number') {
+    return Math.min(a.profitShareAvailable, walletBal);
+  }
+  return walletBal;
+}
+
 export default function RequestRewardPage() {
   const router = useRouter();
   const { ready, authenticated } = useRequireAuth('/payouts/request');
@@ -63,18 +82,33 @@ export default function RequestRewardPage() {
   const [challengeId, setChallengeId] = useState('');
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<(typeof METHODS)[number]['id']>('crypto');
-  const [network, setNetwork] = useState<(typeof NETWORKS)[number]>('USDT TRC20');
-  const [address, setAddress] = useState('');
+  const [wallets, setWallets] = useState<SavedCryptoWallet[]>([]);
+  const [walletId, setWalletId] = useState('');
+  const [addingWallet, setAddingWallet] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+  const [newNetwork, setNewNetwork] = useState<string>(CRYPTO_WALLET_NETWORKS[0]);
+  const [newAddress, setNewAddress] = useState('');
+  const [walletErr, setWalletErr] = useState('');
 
   useEffect(() => {
     if (!authenticated) return;
+    const saved = loadSavedCryptoWallets();
+    setWallets(saved);
+    if (saved[0]) {
+      setWalletId(saved[0].id);
+      setAddingWallet(false);
+    } else {
+      setAddingWallet(true);
+    }
+
     api<EligibleResponse>('/api/payouts/eligible')
       .then((res) => {
         setData(res);
-        if (res.accounts[0]) {
-          setChallengeId(res.accounts[0].id);
-          const bal = Number(res.availableBalance || 0);
-          if (bal > 0) setAmount(String(Math.min(bal, 100)));
+        const first = res.accounts[0];
+        if (first) {
+          setChallengeId(first.id);
+          const max = accountWithdrawable(first, Number(res.availableBalance || 0));
+          if (max > 0) setAmount(String(Math.min(max, Number(max.toFixed(2)))));
         }
       })
       .catch((e) => {
@@ -87,15 +121,58 @@ export default function RequestRewardPage() {
       });
   }, [authenticated, router]);
 
-  const maxAmount = data?.availableBalance ?? 0;
   const selected = useMemo(
     () => data?.accounts.find((a) => a.id === challengeId) ?? null,
     [data, challengeId],
   );
+  const selectedWallet = useMemo(
+    () => wallets.find((w) => w.id === walletId) ?? null,
+    [wallets, walletId],
+  );
+  const maxAmount = selected
+    ? accountWithdrawable(selected, Number(data?.availableBalance || 0))
+    : 0;
+
+  function onAccountChange(id: string) {
+    setChallengeId(id);
+    const acc = data?.accounts.find((a) => a.id === id);
+    if (!acc || !data) return;
+    const max = accountWithdrawable(acc, Number(data.availableBalance || 0));
+    setAmount(max > 0 ? String(Number(max.toFixed(2))) : '');
+  }
+
+  /** Persist a new crypto wallet into Settings storage and select it. */
+  function persistNewWallet(): SavedCryptoWallet | null {
+    setWalletErr('');
+    if (wallets.length >= 5) {
+      setWalletErr('You can add up to 5 wallets.');
+      return null;
+    }
+    if (!newAddress.trim()) {
+      setWalletErr('Enter a wallet address.');
+      return null;
+    }
+    const created: SavedCryptoWallet = {
+      id: `w-${Date.now()}`,
+      label: newLabel.trim() || newNetwork,
+      network: newNetwork,
+      address: newAddress.trim(),
+    };
+    const next = [...wallets, created];
+    setWallets(next);
+    saveCryptoWallets(next);
+    setWalletId(created.id);
+    setNewLabel('');
+    setNewAddress('');
+    setNewNetwork(CRYPTO_WALLET_NETWORKS[0]);
+    setAddingWallet(false);
+    return created;
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setErr('');
+    setWalletErr('');
     if (!challengeId) {
       setErr('Select an eligible account');
       return;
@@ -106,13 +183,18 @@ export default function RequestRewardPage() {
       return;
     }
     if (n > maxAmount) {
-      setErr(`Amount exceeds available balance (${moneyPlain(maxAmount)})`);
+      setErr(`Amount exceeds this account's profit share (${moneyPlain(maxAmount)})`);
       return;
     }
-    if (method === 'crypto' && !address.trim()) {
-      setErr('Enter your payout wallet address');
-      return;
+
+    let payoutWallet = selectedWallet;
+    if (method === 'crypto') {
+      if (addingWallet || !payoutWallet) {
+        payoutWallet = persistNewWallet();
+        if (!payoutWallet) return;
+      }
     }
+
     setBusy(true);
     try {
       await api('/api/payouts/request', {
@@ -121,8 +203,11 @@ export default function RequestRewardPage() {
           amount: n,
           challengeId,
           method,
-          cryptoNetwork: method === 'crypto' ? network : undefined,
-          cryptoAddress: method === 'crypto' ? address.trim() : undefined,
+          cryptoNetwork:
+            method === 'crypto' && payoutWallet
+              ? toPayoutNetwork(payoutWallet.network)
+              : undefined,
+          cryptoAddress: method === 'crypto' && payoutWallet ? payoutWallet.address : undefined,
         }),
       });
       router.push('/payouts');
@@ -191,32 +276,48 @@ export default function RequestRewardPage() {
       ) : (
         <form className="rw-card rw-request-wizard" onSubmit={submit}>
           <p className="rw-form-hint">
-            Available balance: <strong>{moneyPlain(maxAmount)}</strong>
+            Rewards wallet: <strong>{moneyPlain(data!.availableBalance)}</strong>
+            {' · '}
+            You can only withdraw each funded account&apos;s <strong>profit share</strong>.
           </p>
 
           <label>
             Account
-            <select value={challengeId} onChange={(e) => setChallengeId(e.target.value)} required>
-              {data!.accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {accountNo(a)} · {typeLabel(a.sku)} · {sizeLabel(a.accountSize)} · Funded
-                </option>
-              ))}
+            <select value={challengeId} onChange={(e) => onAccountChange(e.target.value)} required>
+              {data!.accounts.map((a) => {
+                const w = accountWithdrawable(a, Number(data!.availableBalance || 0));
+                return (
+                  <option key={a.id} value={a.id}>
+                    {accountNo(a)} · {typeLabel(a.sku)} · {sizeLabel(a.accountSize)} · up to{' '}
+                    {moneyPlain(w)}
+                  </option>
+                );
+              })}
             </select>
           </label>
 
           {selected && (
-            <p className="rw-form-hint">
-              Equity {moneyPlain(selected.equity ?? selected.accountSize)}
-              {selected.platform ? ` · ${selected.platform}` : ''}
-            </p>
+            <div className="rw-form-hint rw-profit-share">
+              <div>
+                Equity {moneyPlain(selected.equity ?? selected.accountSize)}
+                {selected.platform ? ` · ${selected.platform}` : ''}
+              </div>
+              <div>
+                Gross profit {moneyPlain(selected.grossProfit ?? 0)} · Split{' '}
+                {selected.profitSplitPct ?? '—'}% · Cap {moneyPlain(selected.profitShareCap ?? 0)}
+              </div>
+              <div>
+                Already requested {moneyPlain(selected.alreadyRequested ?? 0)} ·{' '}
+                <strong>Withdrawable {moneyPlain(maxAmount)}</strong>
+              </div>
+            </div>
           )}
 
           <label>
             Amount (USD)
             <input
               type="number"
-              min="1"
+              min="0.01"
               max={maxAmount || undefined}
               step="0.01"
               value={amount}
@@ -244,33 +345,111 @@ export default function RequestRewardPage() {
           </fieldset>
 
           {method === 'crypto' && (
-            <>
-              <label>
-                Network
-                <select
-                  value={network}
-                  onChange={(e) => setNetwork(e.target.value as (typeof NETWORKS)[number])}
-                  required
-                >
-                  {NETWORKS.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Wallet address
-                <input
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Paste your payout address"
-                  required
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </label>
-            </>
+            <div className="rw-wallet-block">
+              {wallets.length > 0 && !addingWallet ? (
+                <>
+                  <label>
+                    Payout wallet
+                    <select
+                      value={walletId}
+                      onChange={(e) => setWalletId(e.target.value)}
+                      required
+                    >
+                      {wallets.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.label} · {w.network} · {w.address.slice(0, 8)}…{w.address.slice(-6)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {selectedWallet && (
+                    <p className="rw-form-hint">
+                      Network <strong>{toPayoutNetwork(selectedWallet.network)}</strong>
+                      <br />
+                      Address <code>{selectedWallet.address}</code>
+                    </p>
+                  )}
+                  <p className="rw-form-hint">
+                    <button
+                      type="button"
+                      className="rw-link-btn"
+                      onClick={() => {
+                        setAddingWallet(true);
+                        setWalletErr('');
+                      }}
+                    >
+                      Add another wallet
+                    </button>
+                    {' · '}
+                    <Link href="/settings/crypto-wallets">Manage wallets</Link>
+                  </p>
+                </>
+              ) : (
+                <fieldset className="rw-add-wallet">
+                  <legend>{wallets.length === 0 ? 'Add payout wallet' : 'Add another wallet'}</legend>
+                  <p className="rw-form-hint">
+                    Saved under <strong>Settings → Crypto Wallets</strong> for future withdrawals.
+                  </p>
+                  <label>
+                    Label (optional)
+                    <input
+                      value={newLabel}
+                      onChange={(e) => setNewLabel(e.target.value)}
+                      placeholder="e.g. Main USDT"
+                    />
+                  </label>
+                  <label>
+                    Network
+                    <select
+                      value={newNetwork}
+                      onChange={(e) => setNewNetwork(e.target.value)}
+                      required
+                    >
+                      {CRYPTO_WALLET_NETWORKS.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Wallet address
+                    <input
+                      value={newAddress}
+                      onChange={(e) => setNewAddress(e.target.value)}
+                      placeholder="Paste your payout address"
+                      required={addingWallet}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </label>
+                  {walletErr && <p className="err">{walletErr}</p>}
+                  <div className="rw-empty-actions">
+                    {wallets.length > 0 && (
+                      <button
+                        type="button"
+                        className="rw-btn rw-btn-secondary"
+                        onClick={() => {
+                          setAddingWallet(false);
+                          setWalletErr('');
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="rw-btn"
+                      onClick={() => {
+                        persistNewWallet();
+                      }}
+                    >
+                      Save wallet
+                    </button>
+                  </div>
+                </fieldset>
+              )}
+            </div>
           )}
 
           {method === 'bank' && (
