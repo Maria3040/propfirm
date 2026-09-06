@@ -6,6 +6,7 @@ import { ALL_ENTITIES } from './persistence/entities';
 import { AppRuntime } from './infrastructure/app-runtime';
 import { ApiController } from './api/api.controller';
 import { MetricsController } from './api/metrics.controller';
+import { GqlApiModule } from './graphql/gql-api.module';
 
 const db = parseDatabaseUrl(settings.databaseUrl);
 
@@ -24,6 +25,7 @@ const db = parseDatabaseUrl(settings.databaseUrl);
     }),
     TypeOrmModule.forFeature(ALL_ENTITIES),
     JwtModule.register({ secret: settings.jwtKey }),
+    GqlApiModule,
   ],
   controllers: [ApiController, MetricsController],
   providers: [AppRuntime],
