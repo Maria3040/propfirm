@@ -1,0 +1,600 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+  id="Definitions_PropFirm_Go_AsIs"
+  targetNamespace="http://propfirm.local/bpmn/go-as-is"
+  exporter="PropFirm"
+  exporterVersion="2.0">
+
+  <!--
+    As-is process for branch:
+    feat/backend-golang-modular-monolith_frontend-nextjs-redux
+
+    Open in https://demo.bpmn.io → Open file
+    File: docs/diagrams/propfirm-go-as-is.bpmn
+  -->
+
+  <bpmn:collaboration id="Collab_GoAsIs">
+    <bpmn:participant id="Pool_Trader" name="Trader — Next.js UI (:3100)" processRef="Proc_Trader" />
+    <bpmn:participant id="Pool_API" name="PropFirm Go API — modular monolith (:6080)" processRef="Proc_API" />
+    <bpmn:participant id="Pool_Mail" name="Mailpit SMTP (:2525 / UI :8026)" processRef="Proc_Mail" />
+
+    <bpmn:messageFlow id="MF_Login" sourceRef="T_LoginSubmit" targetRef="A_Login" />
+    <bpmn:messageFlow id="MF_Me" sourceRef="T_OpenProtected" targetRef="A_MeBootstrap" />
+    <bpmn:messageFlow id="MF_Catalog" sourceRef="T_BrowseCatalog" targetRef="A_ListProducts" />
+    <bpmn:messageFlow id="MF_Coupon" sourceRef="T_ApplyCoupon" targetRef="A_ValidateCoupon" />
+    <bpmn:messageFlow id="MF_Order" sourceRef="T_Pay" targetRef="A_CreateOrder" />
+    <bpmn:messageFlow id="MF_Confirm" sourceRef="T_Confirmo" targetRef="A_ConfirmOrder" />
+    <bpmn:messageFlow id="MF_Trade" sourceRef="T_SimulateTrade" targetRef="A_SimulateTrade" />
+    <bpmn:messageFlow id="MF_Payout" sourceRef="T_RequestPayout" targetRef="A_RequestPayout" />
+    <bpmn:messageFlow id="MF_Join" sourceRef="T_JoinComp" targetRef="A_JoinComp" />
+    <bpmn:messageFlow id="MF_MailOut" sourceRef="A_Notify" targetRef="M_Send" />
+    <bpmn:messageFlow id="MF_MailSeen" sourceRef="M_Send" targetRef="T_SeeInbox" />
+  </bpmn:collaboration>
+
+  <!-- ========== Trader UI ========== -->
+  <bpmn:process id="Proc_Trader" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_Trader">
+      <bpmn:lane id="Lane_Auth" name="Auth / session">
+        <bpmn:flowNodeRef>T_Start</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_OpenProtected</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_GW_Session</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_RedirectLogin</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_LoginSubmit</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_ReturnNext</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Buy" name="Catalog / checkout">
+        <bpmn:flowNodeRef>T_BrowseCatalog</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Configure</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Basket</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_ApplyCoupon</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Pay</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_Confirmo</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Trade" name="Challenge / rewards / social">
+        <bpmn:flowNodeRef>T_ViewChallenge</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_SimulateTrade</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_RequestPayout</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_JoinComp</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_SeeInbox</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T_End</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+
+    <bpmn:startEvent id="T_Start" name="Open PropFirm UI">
+      <bpmn:outgoing>TF_1</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:task id="T_OpenProtected" name="Open protected page&#10;(e.g. /payouts/request)">
+      <bpmn:incoming>TF_1</bpmn:incoming>
+      <bpmn:outgoing>TF_2</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:exclusiveGateway id="T_GW_Session" name="Cookie session&#10;ready + user?">
+      <bpmn:incoming>TF_2</bpmn:incoming>
+      <bpmn:outgoing>TF_3a</bpmn:outgoing>
+      <bpmn:outgoing>TF_3b</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:task id="T_RedirectLogin" name="Redirect /login?next=…&#10;(useRequireAuth)">
+      <bpmn:incoming>TF_3b</bpmn:incoming>
+      <bpmn:outgoing>TF_4</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_LoginSubmit" name="POST /api/auth/login&#10;→ httpOnly propfirm_access">
+      <bpmn:incoming>TF_4</bpmn:incoming>
+      <bpmn:outgoing>TF_5</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_ReturnNext" name="Return to next path&#10;+ Redux hydrate">
+      <bpmn:incoming>TF_5</bpmn:incoming>
+      <bpmn:outgoing>TF_6</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_BrowseCatalog" name="Browse catalog&#10;GET /api/catalog/products">
+      <bpmn:incoming>TF_3a</bpmn:incoming>
+      <bpmn:incoming>TF_6</bpmn:incoming>
+      <bpmn:outgoing>TF_7</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_Configure" name="Configure challenge&#10;(phase / variant / size / platform)">
+      <bpmn:incoming>TF_7</bpmn:incoming>
+      <bpmn:outgoing>TF_8</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_Basket" name="Basket checkout&#10;#basket-checkout">
+      <bpmn:incoming>TF_8</bpmn:incoming>
+      <bpmn:outgoing>TF_9</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_ApplyCoupon" name="Apply coupon&#10;WELCOME10 / SAVE20 / FLAT50">
+      <bpmn:incoming>TF_9</bpmn:incoming>
+      <bpmn:outgoing>TF_10</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_Pay" name="Choose payment&#10;+ POST /api/orders (+ couponCode)">
+      <bpmn:incoming>TF_10</bpmn:incoming>
+      <bpmn:outgoing>TF_11</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_Confirmo" name="Confirmo mock pay&#10;→ POST /api/orders/:id/confirm">
+      <bpmn:incoming>TF_11</bpmn:incoming>
+      <bpmn:outgoing>TF_12</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_ViewChallenge" name="View challenge detail&#10;(account + equity series)">
+      <bpmn:incoming>TF_12</bpmn:incoming>
+      <bpmn:outgoing>TF_13</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_SimulateTrade" name="Simulate trade&#10;POST …/trades/simulate">
+      <bpmn:incoming>TF_13</bpmn:incoming>
+      <bpmn:outgoing>TF_14</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_RequestPayout" name="Request reward&#10;POST /api/payouts/request">
+      <bpmn:incoming>TF_14</bpmn:incoming>
+      <bpmn:outgoing>TF_15</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_JoinComp" name="Join competition&#10;POST /api/competitions/:id/join">
+      <bpmn:incoming>TF_15</bpmn:incoming>
+      <bpmn:outgoing>TF_16</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="T_SeeInbox" name="Optional: check Mailpit&#10;inbox :8026">
+      <bpmn:incoming>TF_16</bpmn:incoming>
+      <bpmn:outgoing>TF_17</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:endEvent id="T_End" name="As-is journey complete">
+      <bpmn:incoming>TF_17</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="TF_1" sourceRef="T_Start" targetRef="T_OpenProtected" />
+    <bpmn:sequenceFlow id="TF_2" sourceRef="T_OpenProtected" targetRef="T_GW_Session" />
+    <bpmn:sequenceFlow id="TF_3a" name="yes" sourceRef="T_GW_Session" targetRef="T_BrowseCatalog" />
+    <bpmn:sequenceFlow id="TF_3b" name="no" sourceRef="T_GW_Session" targetRef="T_RedirectLogin" />
+    <bpmn:sequenceFlow id="TF_4" sourceRef="T_RedirectLogin" targetRef="T_LoginSubmit" />
+    <bpmn:sequenceFlow id="TF_5" sourceRef="T_LoginSubmit" targetRef="T_ReturnNext" />
+    <bpmn:sequenceFlow id="TF_6" sourceRef="T_ReturnNext" targetRef="T_BrowseCatalog" />
+    <bpmn:sequenceFlow id="TF_7" sourceRef="T_BrowseCatalog" targetRef="T_Configure" />
+    <bpmn:sequenceFlow id="TF_8" sourceRef="T_Configure" targetRef="T_Basket" />
+    <bpmn:sequenceFlow id="TF_9" sourceRef="T_Basket" targetRef="T_ApplyCoupon" />
+    <bpmn:sequenceFlow id="TF_10" sourceRef="T_ApplyCoupon" targetRef="T_Pay" />
+    <bpmn:sequenceFlow id="TF_11" sourceRef="T_Pay" targetRef="T_Confirmo" />
+    <bpmn:sequenceFlow id="TF_12" sourceRef="T_Confirmo" targetRef="T_ViewChallenge" />
+    <bpmn:sequenceFlow id="TF_13" sourceRef="T_ViewChallenge" targetRef="T_SimulateTrade" />
+    <bpmn:sequenceFlow id="TF_14" sourceRef="T_SimulateTrade" targetRef="T_RequestPayout" />
+    <bpmn:sequenceFlow id="TF_15" sourceRef="T_RequestPayout" targetRef="T_JoinComp" />
+    <bpmn:sequenceFlow id="TF_16" sourceRef="T_JoinComp" targetRef="T_SeeInbox" />
+    <bpmn:sequenceFlow id="TF_17" sourceRef="T_SeeInbox" targetRef="T_End" />
+  </bpmn:process>
+
+  <!-- ========== Go API ========== -->
+  <bpmn:process id="Proc_API" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_API">
+      <bpmn:lane id="Lane_Users" name="Users BC">
+        <bpmn:flowNodeRef>A_Start</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_MeBootstrap</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_Login</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Commerce" name="Catalog / Commerce">
+        <bpmn:flowNodeRef>A_ListProducts</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_ValidateCoupon</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_CreateOrder</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_ConfirmOrder</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_BusOrderPaid</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Eval" name="Challenges / Trading / Risk">
+        <bpmn:flowNodeRef>A_Provision</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_SimulateTrade</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_EvaluateRisk</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_GW_Risk</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_Breach</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_AdvanceOrFund</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_CreditWallet</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Side" name="Payouts / Competitions / Notify">
+        <bpmn:flowNodeRef>A_RequestPayout</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_AdminDecide</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_JoinComp</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_Notify</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_Audit</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>A_End</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+
+    <bpmn:startEvent id="A_Start" name="HTTP / cookie JWT">
+      <bpmn:outgoing>AF_1</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:task id="A_MeBootstrap" name="GET /api/users/me&#10;(AuthBootstrap)">
+      <bpmn:incoming>AF_1</bpmn:incoming>
+      <bpmn:outgoing>AF_2</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_Login" name="Verify bcrypt + set cookie&#10;+ login_history">
+      <bpmn:incoming>AF_2</bpmn:incoming>
+      <bpmn:outgoing>AF_3</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_ListProducts" name="List active products&#10;(catalog schema)">
+      <bpmn:incoming>AF_3</bpmn:incoming>
+      <bpmn:outgoing>AF_4</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_ValidateCoupon" name="POST /api/coupons/validate&#10;(percent / flat rules)">
+      <bpmn:incoming>AF_4</bpmn:incoming>
+      <bpmn:outgoing>AF_5</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_CreateOrder" name="Create order + payment intent&#10;(apply couponCode)">
+      <bpmn:incoming>AF_5</bpmn:incoming>
+      <bpmn:outgoing>AF_6</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_ConfirmOrder" name="Confirm payment → Paid&#10;publish OrderPaid">
+      <bpmn:incoming>AF_6</bpmn:incoming>
+      <bpmn:outgoing>AF_7</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_BusOrderPaid" name="In-process bus&#10;OrderPaid handlers">
+      <bpmn:incoming>AF_7</bpmn:incoming>
+      <bpmn:outgoing>AF_8</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_Provision" name="Create Challenge Active&#10;+ TradingAccount + email">
+      <bpmn:incoming>AF_8</bpmn:incoming>
+      <bpmn:outgoing>AF_9</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_SimulateTrade" name="Apply PnL + trade row&#10;+ equity snapshot">
+      <bpmn:incoming>AF_9</bpmn:incoming>
+      <bpmn:outgoing>AF_10</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_EvaluateRisk" name="evaluateRisk&#10;(DailyLoss / MaxDD / Target)">
+      <bpmn:incoming>AF_10</bpmn:incoming>
+      <bpmn:outgoing>AF_11</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:exclusiveGateway id="A_GW_Risk" name="Risk result?">
+      <bpmn:incoming>AF_11</bpmn:incoming>
+      <bpmn:outgoing>AF_12a</bpmn:outgoing>
+      <bpmn:outgoing>AF_12b</bpmn:outgoing>
+      <bpmn:outgoing>AF_12c</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:task id="A_Breach" name="Fail challenge + lock&#10;+ breach_records + email">
+      <bpmn:incoming>AF_12a</bpmn:incoming>
+      <bpmn:outgoing>AF_13</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_AdvanceOrFund" name="Advance phase&#10;or status=Funded">
+      <bpmn:incoming>AF_12b</bpmn:incoming>
+      <bpmn:outgoing>AF_14</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_CreditWallet" name="Credit wallet 10% size&#10;on Funded">
+      <bpmn:incoming>AF_14</bpmn:incoming>
+      <bpmn:outgoing>AF_15</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_RequestPayout" name="Create Pending payout&#10;(crypto network+address)">
+      <bpmn:incoming>AF_12c</bpmn:incoming>
+      <bpmn:incoming>AF_13</bpmn:incoming>
+      <bpmn:incoming>AF_15</bpmn:incoming>
+      <bpmn:outgoing>AF_16</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_AdminDecide" name="Admin approve/reject&#10;(debit wallet if approved)">
+      <bpmn:incoming>AF_16</bpmn:incoming>
+      <bpmn:outgoing>AF_17</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_JoinComp" name="Persist competition_joins&#10;(idempotent)">
+      <bpmn:incoming>AF_17</bpmn:incoming>
+      <bpmn:outgoing>AF_18</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_Notify" name="Notifications BC&#10;SMTP send + persist">
+      <bpmn:incoming>AF_18</bpmn:incoming>
+      <bpmn:outgoing>AF_19</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="A_Audit" name="AuditHub append&#10;integration events">
+      <bpmn:incoming>AF_19</bpmn:incoming>
+      <bpmn:outgoing>AF_20</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:endEvent id="A_End" name="API side-effects done">
+      <bpmn:incoming>AF_20</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="AF_1" sourceRef="A_Start" targetRef="A_MeBootstrap" />
+    <bpmn:sequenceFlow id="AF_2" sourceRef="A_MeBootstrap" targetRef="A_Login" />
+    <bpmn:sequenceFlow id="AF_3" sourceRef="A_Login" targetRef="A_ListProducts" />
+    <bpmn:sequenceFlow id="AF_4" sourceRef="A_ListProducts" targetRef="A_ValidateCoupon" />
+    <bpmn:sequenceFlow id="AF_5" sourceRef="A_ValidateCoupon" targetRef="A_CreateOrder" />
+    <bpmn:sequenceFlow id="AF_6" sourceRef="A_CreateOrder" targetRef="A_ConfirmOrder" />
+    <bpmn:sequenceFlow id="AF_7" sourceRef="A_ConfirmOrder" targetRef="A_BusOrderPaid" />
+    <bpmn:sequenceFlow id="AF_8" sourceRef="A_BusOrderPaid" targetRef="A_Provision" />
+    <bpmn:sequenceFlow id="AF_9" sourceRef="A_Provision" targetRef="A_SimulateTrade" />
+    <bpmn:sequenceFlow id="AF_10" sourceRef="A_SimulateTrade" targetRef="A_EvaluateRisk" />
+    <bpmn:sequenceFlow id="AF_11" sourceRef="A_EvaluateRisk" targetRef="A_GW_Risk" />
+    <bpmn:sequenceFlow id="AF_12a" name="breach" sourceRef="A_GW_Risk" targetRef="A_Breach" />
+    <bpmn:sequenceFlow id="AF_12b" name="target" sourceRef="A_GW_Risk" targetRef="A_AdvanceOrFund" />
+    <bpmn:sequenceFlow id="AF_12c" name="ok / continue" sourceRef="A_GW_Risk" targetRef="A_RequestPayout" />
+    <bpmn:sequenceFlow id="AF_13" sourceRef="A_Breach" targetRef="A_RequestPayout" />
+    <bpmn:sequenceFlow id="AF_14" sourceRef="A_AdvanceOrFund" targetRef="A_CreditWallet" />
+    <bpmn:sequenceFlow id="AF_15" sourceRef="A_CreditWallet" targetRef="A_RequestPayout" />
+    <bpmn:sequenceFlow id="AF_16" sourceRef="A_RequestPayout" targetRef="A_AdminDecide" />
+    <bpmn:sequenceFlow id="AF_17" sourceRef="A_AdminDecide" targetRef="A_JoinComp" />
+    <bpmn:sequenceFlow id="AF_18" sourceRef="A_JoinComp" targetRef="A_Notify" />
+    <bpmn:sequenceFlow id="AF_19" sourceRef="A_Notify" targetRef="A_Audit" />
+    <bpmn:sequenceFlow id="AF_20" sourceRef="A_Audit" targetRef="A_End" />
+  </bpmn:process>
+
+  <!-- ========== Mail ========== -->
+  <bpmn:process id="Proc_Mail" isExecutable="false">
+    <bpmn:startEvent id="M_Start" name="SMTP request">
+      <bpmn:outgoing>MF_S1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="M_Send" name="Deliver message&#10;(credentials / funded /&#10;payout / competition)">
+      <bpmn:incoming>MF_S1</bpmn:incoming>
+      <bpmn:outgoing>MF_S2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="M_End" name="Visible in Mailpit">
+      <bpmn:incoming>MF_S2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="MF_S1" sourceRef="M_Start" targetRef="M_Send" />
+    <bpmn:sequenceFlow id="MF_S2" sourceRef="M_Send" targetRef="M_End" />
+  </bpmn:process>
+
+  <!-- ========== Diagram layout ========== -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_GoAsIs">
+    <bpmndi:BPMNPlane id="BPMNPlane_GoAsIs" bpmnElement="Collab_GoAsIs">
+
+      <bpmndi:BPMNShape id="Shape_Pool_Trader" bpmnElement="Pool_Trader" isHorizontal="true">
+        <dc:Bounds x="120" y="60" width="1680" height="280" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_Auth" bpmnElement="Lane_Auth" isHorizontal="true">
+        <dc:Bounds x="150" y="60" width="1650" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_Buy" bpmnElement="Lane_Buy" isHorizontal="true">
+        <dc:Bounds x="150" y="150" width="1650" height="95" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_Trade" bpmnElement="Lane_Trade" isHorizontal="true">
+        <dc:Bounds x="150" y="245" width="1650" height="95" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_Pool_API" bpmnElement="Pool_API" isHorizontal="true">
+        <dc:Bounds x="120" y="380" width="1680" height="420" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_Users" bpmnElement="Lane_Users" isHorizontal="true">
+        <dc:Bounds x="150" y="380" width="1650" height="90" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_Commerce" bpmnElement="Lane_Commerce" isHorizontal="true">
+        <dc:Bounds x="150" y="470" width="1650" height="100" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_Eval" bpmnElement="Lane_Eval" isHorizontal="true">
+        <dc:Bounds x="150" y="570" width="1650" height="120" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Lane_Side" bpmnElement="Lane_Side" isHorizontal="true">
+        <dc:Bounds x="150" y="690" width="1650" height="110" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_Pool_Mail" bpmnElement="Pool_Mail" isHorizontal="true">
+        <dc:Bounds x="120" y="840" width="1680" height="120" />
+      </bpmndi:BPMNShape>
+
+      <!-- Trader auth lane y~85 -->
+      <bpmndi:BPMNShape id="Shape_T_Start" bpmnElement="T_Start">
+        <dc:Bounds x="190" y="82" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_OpenProtected" bpmnElement="T_OpenProtected">
+        <dc:Bounds x="250" y="60" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_GW_Session" bpmnElement="T_GW_Session" isMarkerVisible="true">
+        <dc:Bounds x="400" y="75" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_RedirectLogin" bpmnElement="T_RedirectLogin">
+        <dc:Bounds x="480" y="60" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_LoginSubmit" bpmnElement="T_LoginSubmit">
+        <dc:Bounds x="630" y="60" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_ReturnNext" bpmnElement="T_ReturnNext">
+        <dc:Bounds x="790" y="60" width="120" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Trader buy lane y~160 -->
+      <bpmndi:BPMNShape id="Shape_T_BrowseCatalog" bpmnElement="T_BrowseCatalog">
+        <dc:Bounds x="250" y="155" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_Configure" bpmnElement="T_Configure">
+        <dc:Bounds x="400" y="155" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_Basket" bpmnElement="T_Basket">
+        <dc:Bounds x="550" y="155" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_ApplyCoupon" bpmnElement="T_ApplyCoupon">
+        <dc:Bounds x="690" y="155" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_Pay" bpmnElement="T_Pay">
+        <dc:Bounds x="840" y="155" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_Confirmo" bpmnElement="T_Confirmo">
+        <dc:Bounds x="990" y="155" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- Trader trade lane y~255 -->
+      <bpmndi:BPMNShape id="Shape_T_ViewChallenge" bpmnElement="T_ViewChallenge">
+        <dc:Bounds x="250" y="250" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_SimulateTrade" bpmnElement="T_SimulateTrade">
+        <dc:Bounds x="400" y="250" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_RequestPayout" bpmnElement="T_RequestPayout">
+        <dc:Bounds x="550" y="250" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_JoinComp" bpmnElement="T_JoinComp">
+        <dc:Bounds x="700" y="250" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_SeeInbox" bpmnElement="T_SeeInbox">
+        <dc:Bounds x="850" y="250" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_T_End" bpmnElement="T_End">
+        <dc:Bounds x="1010" y="272" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- API users y~400 -->
+      <bpmndi:BPMNShape id="Shape_A_Start" bpmnElement="A_Start">
+        <dc:Bounds x="190" y="402" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_MeBootstrap" bpmnElement="A_MeBootstrap">
+        <dc:Bounds x="250" y="380" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_Login" bpmnElement="A_Login">
+        <dc:Bounds x="400" y="380" width="130" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- API commerce y~485 -->
+      <bpmndi:BPMNShape id="Shape_A_ListProducts" bpmnElement="A_ListProducts">
+        <dc:Bounds x="250" y="480" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_ValidateCoupon" bpmnElement="A_ValidateCoupon">
+        <dc:Bounds x="390" y="480" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_CreateOrder" bpmnElement="A_CreateOrder">
+        <dc:Bounds x="540" y="480" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_ConfirmOrder" bpmnElement="A_ConfirmOrder">
+        <dc:Bounds x="690" y="480" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_BusOrderPaid" bpmnElement="A_BusOrderPaid">
+        <dc:Bounds x="840" y="480" width="120" height="80" />
+      </bpmndi:BPMNShape>
+
+      <!-- API eval y~585 -->
+      <bpmndi:BPMNShape id="Shape_A_Provision" bpmnElement="A_Provision">
+        <dc:Bounds x="250" y="585" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_SimulateTrade" bpmnElement="A_SimulateTrade">
+        <dc:Bounds x="400" y="585" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_EvaluateRisk" bpmnElement="A_EvaluateRisk">
+        <dc:Bounds x="550" y="585" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_GW_Risk" bpmnElement="A_GW_Risk" isMarkerVisible="true">
+        <dc:Bounds x="710" y="600" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_Breach" bpmnElement="A_Breach">
+        <dc:Bounds x="800" y="555" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_AdvanceOrFund" bpmnElement="A_AdvanceOrFund">
+        <dc:Bounds x="800" y="635" width="120" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_CreditWallet" bpmnElement="A_CreditWallet">
+        <dc:Bounds x="950" y="635" width="120" height="70" />
+      </bpmndi:BPMNShape>
+
+      <!-- API side y~710 -->
+      <bpmndi:BPMNShape id="Shape_A_RequestPayout" bpmnElement="A_RequestPayout">
+        <dc:Bounds x="250" y="705" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_AdminDecide" bpmnElement="A_AdminDecide">
+        <dc:Bounds x="400" y="705" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_JoinComp" bpmnElement="A_JoinComp">
+        <dc:Bounds x="550" y="705" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_Notify" bpmnElement="A_Notify">
+        <dc:Bounds x="700" y="705" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_Audit" bpmnElement="A_Audit">
+        <dc:Bounds x="850" y="705" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_A_End" bpmnElement="A_End">
+        <dc:Bounds x="1000" y="727" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Mail -->
+      <bpmndi:BPMNShape id="Shape_M_Start" bpmnElement="M_Start">
+        <dc:Bounds x="190" y="872" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_M_Send" bpmnElement="M_Send">
+        <dc:Bounds x="700" y="850" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_M_End" bpmnElement="M_End">
+        <dc:Bounds x="1000" y="872" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <!-- Trader flows -->
+      <bpmndi:BPMNEdge id="E_TF_1" bpmnElement="TF_1"><di:waypoint x="226" y="100" /><di:waypoint x="250" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_2" bpmnElement="TF_2"><di:waypoint x="370" y="100" /><di:waypoint x="400" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_3a" bpmnElement="TF_3a"><di:waypoint x="425" y="125" /><di:waypoint x="425" y="195" /><di:waypoint x="250" y="195" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_3b" bpmnElement="TF_3b"><di:waypoint x="450" y="100" /><di:waypoint x="480" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_4" bpmnElement="TF_4"><di:waypoint x="600" y="100" /><di:waypoint x="630" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_5" bpmnElement="TF_5"><di:waypoint x="760" y="100" /><di:waypoint x="790" y="100" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_6" bpmnElement="TF_6"><di:waypoint x="850" y="140" /><di:waypoint x="850" y="195" /><di:waypoint x="370" y="195" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_7" bpmnElement="TF_7"><di:waypoint x="370" y="195" /><di:waypoint x="400" y="195" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_8" bpmnElement="TF_8"><di:waypoint x="520" y="195" /><di:waypoint x="550" y="195" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_9" bpmnElement="TF_9"><di:waypoint x="660" y="195" /><di:waypoint x="690" y="195" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_10" bpmnElement="TF_10"><di:waypoint x="810" y="195" /><di:waypoint x="840" y="195" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_11" bpmnElement="TF_11"><di:waypoint x="960" y="195" /><di:waypoint x="990" y="195" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_12" bpmnElement="TF_12"><di:waypoint x="1055" y="235" /><di:waypoint x="1055" y="290" /><di:waypoint x="370" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_13" bpmnElement="TF_13"><di:waypoint x="370" y="290" /><di:waypoint x="400" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_14" bpmnElement="TF_14"><di:waypoint x="520" y="290" /><di:waypoint x="550" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_15" bpmnElement="TF_15"><di:waypoint x="670" y="290" /><di:waypoint x="700" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_16" bpmnElement="TF_16"><di:waypoint x="820" y="290" /><di:waypoint x="850" y="290" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_TF_17" bpmnElement="TF_17"><di:waypoint x="970" y="290" /><di:waypoint x="1010" y="290" /></bpmndi:BPMNEdge>
+
+      <!-- API flows -->
+      <bpmndi:BPMNEdge id="E_AF_1" bpmnElement="AF_1"><di:waypoint x="226" y="420" /><di:waypoint x="250" y="420" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_2" bpmnElement="AF_2"><di:waypoint x="370" y="420" /><di:waypoint x="400" y="420" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_3" bpmnElement="AF_3"><di:waypoint x="465" y="460" /><di:waypoint x="465" y="520" /><di:waypoint x="250" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_4" bpmnElement="AF_4"><di:waypoint x="360" y="520" /><di:waypoint x="390" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_5" bpmnElement="AF_5"><di:waypoint x="510" y="520" /><di:waypoint x="540" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_6" bpmnElement="AF_6"><di:waypoint x="660" y="520" /><di:waypoint x="690" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_7" bpmnElement="AF_7"><di:waypoint x="810" y="520" /><di:waypoint x="840" y="520" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_8" bpmnElement="AF_8"><di:waypoint x="900" y="560" /><di:waypoint x="900" y="625" /><di:waypoint x="370" y="625" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_9" bpmnElement="AF_9"><di:waypoint x="370" y="625" /><di:waypoint x="400" y="625" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_10" bpmnElement="AF_10"><di:waypoint x="520" y="625" /><di:waypoint x="550" y="625" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_11" bpmnElement="AF_11"><di:waypoint x="670" y="625" /><di:waypoint x="710" y="625" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_12a" bpmnElement="AF_12a"><di:waypoint x="735" y="600" /><di:waypoint x="735" y="590" /><di:waypoint x="800" y="590" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_12b" bpmnElement="AF_12b"><di:waypoint x="735" y="650" /><di:waypoint x="735" y="670" /><di:waypoint x="800" y="670" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_12c" bpmnElement="AF_12c"><di:waypoint x="735" y="650" /><di:waypoint x="735" y="745" /><di:waypoint x="250" y="745" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_13" bpmnElement="AF_13"><di:waypoint x="860" y="625" /><di:waypoint x="860" y="745" /><di:waypoint x="370" y="745" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_14" bpmnElement="AF_14"><di:waypoint x="920" y="670" /><di:waypoint x="950" y="670" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_15" bpmnElement="AF_15"><di:waypoint x="1010" y="705" /><di:waypoint x="1010" y="745" /><di:waypoint x="370" y="745" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_16" bpmnElement="AF_16"><di:waypoint x="370" y="745" /><di:waypoint x="400" y="745" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_17" bpmnElement="AF_17"><di:waypoint x="520" y="745" /><di:waypoint x="550" y="745" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_18" bpmnElement="AF_18"><di:waypoint x="670" y="745" /><di:waypoint x="700" y="745" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_19" bpmnElement="AF_19"><di:waypoint x="820" y="745" /><di:waypoint x="850" y="745" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_AF_20" bpmnElement="AF_20"><di:waypoint x="960" y="745" /><di:waypoint x="1000" y="745" /></bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="E_MF_S1" bpmnElement="MF_S1"><di:waypoint x="226" y="890" /><di:waypoint x="700" y="890" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_S2" bpmnElement="MF_S2"><di:waypoint x="840" y="890" /><di:waypoint x="1000" y="890" /></bpmndi:BPMNEdge>
+
+      <!-- Message flows -->
+      <bpmndi:BPMNEdge id="E_MF_Login" bpmnElement="MF_Login"><di:waypoint x="695" y="140" /><di:waypoint x="465" y="380" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Me" bpmnElement="MF_Me"><di:waypoint x="310" y="140" /><di:waypoint x="310" y="380" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Catalog" bpmnElement="MF_Catalog"><di:waypoint x="310" y="235" /><di:waypoint x="305" y="480" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Coupon" bpmnElement="MF_Coupon"><di:waypoint x="750" y="235" /><di:waypoint x="450" y="480" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Order" bpmnElement="MF_Order"><di:waypoint x="900" y="235" /><di:waypoint x="600" y="480" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Confirm" bpmnElement="MF_Confirm"><di:waypoint x="1055" y="235" /><di:waypoint x="750" y="480" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Trade" bpmnElement="MF_Trade"><di:waypoint x="460" y="330" /><di:waypoint x="460" y="585" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Payout" bpmnElement="MF_Payout"><di:waypoint x="610" y="330" /><di:waypoint x="310" y="705" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_Join" bpmnElement="MF_Join"><di:waypoint x="760" y="330" /><di:waypoint x="610" y="705" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_MailOut" bpmnElement="MF_MailOut"><di:waypoint x="760" y="785" /><di:waypoint x="770" y="850" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E_MF_MailSeen" bpmnElement="MF_MailSeen"><di:waypoint x="770" y="850" /><di:waypoint x="910" y="330" /></bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

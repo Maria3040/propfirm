@@ -42,7 +42,8 @@ powershell -ExecutionPolicy Bypass -File .\start-propfirm.ps1
 
 | Artifact | How to view |
 |----------|-------------|
-| [`docs/diagrams/propfirm-processes.bpmn`](docs/diagrams/propfirm-processes.bpmn) | Open at **https://demo.bpmn.io** → *Open file* (purchase collaboration + login/IP history) |
+| [`docs/diagrams/propfirm-go-as-is.bpmn`](docs/diagrams/propfirm-go-as-is.bpmn) | **Go track as-is** — open at **https://demo.bpmn.io** → *Open file* (auth redirect, coupon checkout, risk, payouts, competitions, Mailpit) |
+| [`docs/diagrams/propfirm-processes.bpmn`](docs/diagrams/propfirm-processes.bpmn) | Earlier Nest purchase + login/IP history BPMN |
 | [`architecture-containers.puml`](docs/diagrams/architecture-containers.puml) | PlantUML — containers / deployment |
 | [`domain-classes.puml`](docs/diagrams/domain-classes.puml) | PlantUML — BC class sketch |
 | [`sequence-login-history.puml`](docs/diagrams/sequence-login-history.puml) | PlantUML — login + history sequence |
