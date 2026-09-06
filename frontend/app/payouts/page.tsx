@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { api, getSession } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { api } from '@/lib/api';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 
 type Wallet = { availableBalance: number };
 type PayoutRow = {
@@ -52,22 +54,39 @@ function statusLabel(status: string) {
 }
 
 export default function PayoutsPage() {
+  const router = useRouter();
+  const { ready, authenticated } = useRequireAuth('/payouts');
   const [wallet, setWallet] = useState<Wallet>({ availableBalance: 0 });
   const [rows, setRows] = useState<PayoutRow[]>([]);
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    if (!getSession()) {
-      setErr('Please login');
-      return;
-    }
+    if (!authenticated) return;
     api<Wallet>('/api/payouts/wallet')
       .then(setWallet)
-      .catch((e) => setErr(String(e.message || e)));
+      .catch((e) => {
+        const msg = String(e.message || e);
+        if (/unauthorized/i.test(msg)) {
+          router.replace(`/login?next=${encodeURIComponent('/payouts')}`);
+          return;
+        }
+        setErr(msg);
+      });
     api<PayoutRow[]>('/api/payouts')
       .then((r) => setRows(Array.isArray(r) ? r : []))
       .catch(() => undefined);
-  }, []);
+  }, [authenticated, router]);
+
+  if (!ready || !authenticated) {
+    return (
+      <div className="rw-page">
+        <div className="rw-heading">
+          <h1>Rewards</h1>
+        </div>
+        <p className="meta">Checking session…</p>
+      </div>
+    );
+  }
 
   const empty = (
     <div className="rw-empty">

@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { api, getSession } from '@/lib/api';
+import { api } from '@/lib/api';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 
 type Challenge = {
   id: string;
@@ -63,17 +63,13 @@ function ScoreRadar() {
 }
 
 export default function DashboardPage() {
-  const router = useRouter();
+  const { user, ready, authenticated } = useRequireAuth('/dashboard');
   const [rows, setRows] = useState<Challenge[]>([]);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [err, setErr] = useState('');
-  const session = typeof window !== 'undefined' ? getSession() : null;
 
   useEffect(() => {
-    if (!getSession()) {
-      router.replace('/login?next=/dashboard');
-      return;
-    }
+    if (!authenticated) return;
     Promise.all([
       api<Challenge[]>('/api/challenges'),
       api<Wallet>('/api/payouts/wallet').catch(() => ({ traderId: '', availableBalance: 0 })),
@@ -83,9 +79,9 @@ export default function DashboardPage() {
         setWallet(w);
       })
       .catch((e) => setErr(String(e.message || e)));
-  }, [router]);
+  }, [authenticated]);
 
-  const displayName = session?.displayName || 'Trader';
+  const displayName = user?.displayName || 'Trader';
   const shortName = displayName.split(/\s+/)[0];
   const active = useMemo(
     () => rows.filter((c) => c.status === 'Active' || c.status === 'Funded'),
@@ -93,8 +89,8 @@ export default function DashboardPage() {
   );
   const rewardBal = wallet?.availableBalance ?? 0;
 
-  if (!session && !err) {
-    return <p className="meta">Redirecting to login…</p>;
+  if (!ready || !authenticated) {
+    return <p className="meta">Checking session…</p>;
   }
 
   return (

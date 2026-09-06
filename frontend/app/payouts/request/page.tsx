@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, getSession } from '@/lib/api';
+import { api } from '@/lib/api';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 import { accountNo, moneyPlain, sizeLabel, typeLabel } from '@/lib/accounts-format';
 
 type EligibleAccount = {
@@ -55,6 +56,7 @@ function WalletIcon() {
 
 export default function RequestRewardPage() {
   const router = useRouter();
+  const { ready, authenticated } = useRequireAuth('/payouts/request');
   const [data, setData] = useState<EligibleResponse | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -65,10 +67,7 @@ export default function RequestRewardPage() {
   const [address, setAddress] = useState('');
 
   useEffect(() => {
-    if (!getSession()) {
-      setErr('Please login');
-      return;
-    }
+    if (!authenticated) return;
     api<EligibleResponse>('/api/payouts/eligible')
       .then((res) => {
         setData(res);
@@ -78,8 +77,15 @@ export default function RequestRewardPage() {
           if (bal > 0) setAmount(String(Math.min(bal, 100)));
         }
       })
-      .catch((e) => setErr(String(e.message || e)));
-  }, []);
+      .catch((e) => {
+        const msg = String(e.message || e);
+        if (/unauthorized/i.test(msg)) {
+          router.replace(`/login?next=${encodeURIComponent('/payouts/request')}`);
+          return;
+        }
+        setErr(msg);
+      });
+  }, [authenticated, router]);
 
   const maxAmount = data?.availableBalance ?? 0;
   const selected = useMemo(
@@ -125,6 +131,17 @@ export default function RequestRewardPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!ready || !authenticated) {
+    return (
+      <div className="rw-page">
+        <div className="rw-heading">
+          <h1>Request A Reward</h1>
+        </div>
+        <p className="meta">Checking session…</p>
+      </div>
+    );
   }
 
   if (!data && !err) {
@@ -190,7 +207,7 @@ export default function RequestRewardPage() {
 
           {selected && (
             <p className="rw-form-hint">
-              Equity {moneyPlain(selected.equity)}
+              Equity {moneyPlain(selected.equity ?? selected.accountSize)}
               {selected.platform ? ` · ${selected.platform}` : ''}
             </p>
           )}
