@@ -6,9 +6,13 @@
 - **GraphQL track**: NestJS **GraphQL (Apollo)** + TypeORM + Postgres · Next.js **Apollo Client**
   - Branch: `feat/backend-nestjs-graphql-typeorm-postgres_frontend-nextjs-apollo`
   - Playground: `http://localhost:6080/graphql` · UI lab: `http://localhost:3100/graphql-lab`
-- **Redux + httpOnly JWT track** (this branch when checked out):
+- **Redux + httpOnly JWT track**:
   - Branch: `feat/backend-nestjs-typeorm-postgres-httponly-jwt_frontend-nextjs-redux`
-  - Nest sets `propfirm_access` **httpOnly** cookie; UI uses **Redux Toolkit** for profile/UI state
-  - Next rewrites `/api/*` and `/graphql` → `:6080` (same-origin cookies)
+  - Nest sets `propfirm_access` **httpOnly** cookie; UI uses **Redux Toolkit**
+- **Go modular monolith track** (this branch when checked out):
+  - Branch: `feat/backend-golang-modular-monolith_frontend-nextjs-redux`
+  - API: `backend-go/` (chi + pgx + schema-per-BC + in-process bus + domain tests)
+  - Nest reference remains in `backend/` (not started by `start-propfirm.ps1`)
+  - Same cookie JWT contract; Next rewrites `/api/*` → `:6080`
 - Ports: API 6080 · UI 3100 · Postgres 15433 · Mailpit 8026 / SMTP 2525
-- DDD modular monolith: schema-per-BC, in-process bus, domain ≠ ORM
+- DDD modular monolith: schema-per-BC, in-process bus, domain ≠ persistence

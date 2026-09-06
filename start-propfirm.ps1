@@ -1,4 +1,4 @@
-# Starts PropFirm API (:6080) + Next.js UI (:3100)
+# Starts PropFirm Go API (:6080) + Next.js UI (:3100)
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 
@@ -7,12 +7,9 @@ Push-Location $root
 docker compose up -d
 Pop-Location
 
-$backend = Join-Path $root "backend"
+$backendGo = Join-Path $root "backend-go"
 $frontend = Join-Path $root "frontend"
 
-if (-not (Test-Path (Join-Path $backend "node_modules"))) {
-  Push-Location $backend; npm.cmd install; Pop-Location
-}
 if (-not (Test-Path (Join-Path $frontend "node_modules"))) {
   Push-Location $frontend; npm.cmd install; Pop-Location
 }
@@ -21,17 +18,17 @@ $env:DATABASE_URL = "postgresql://propfirm:propfirm_dev@127.0.0.1:15433/propfirm
 $env:HTTP_PORT = "6080"
 $env:SMTP_PORT = "2525"
 $env:CORS_ORIGIN = "http://localhost:3100,http://127.0.0.1:3100"
-# Prefer same-origin Next rewrites for httpOnly cookies (Redux track). Unset direct API base.
+$env:GOTOOLCHAIN = "local"
 Remove-Item Env:NEXT_PUBLIC_API_BASE -ErrorAction SilentlyContinue
 $env:API_PROXY_TARGET = "http://127.0.0.1:6080"
 
-Write-Host "Building backend..." -ForegroundColor Cyan
-Push-Location $backend
-npm.cmd run build
+Write-Host "Building Go API..." -ForegroundColor Cyan
+Push-Location $backendGo
+go build -o propfirm-api.exe ./cmd/api
 Pop-Location
 
-$node = (Get-Command node.exe).Source
-Start-Process -FilePath $node -ArgumentList @((Join-Path $backend "dist\main.js")) -WorkingDirectory $backend
+$apiExe = Join-Path $backendGo "propfirm-api.exe"
+Start-Process -FilePath $apiExe -WorkingDirectory $backendGo
 Start-Sleep 2
 
 $npm = (Get-Command npm.cmd).Source
@@ -39,7 +36,8 @@ Start-Process -FilePath $npm -ArgumentList @("run", "dev") -WorkingDirectory $fr
 
 Write-Host ""
 Write-Host "UI:      http://localhost:3100"
-Write-Host "API:     http://localhost:6080"
+Write-Host "API:     http://localhost:6080  (Go modular monolith)"
 Write-Host "Mailpit: http://localhost:8026"
 Write-Host "Trader:  trader@propfirm.local / Trader1!"
 Write-Host "Admin:   admin@propfirm.local / Admin1!"
+Write-Host "Nest reference backend remains in .\backend (not started)"

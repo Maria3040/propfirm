@@ -1,8 +1,8 @@
 # PropFirm — FundingPips-style evaluation platform
 
-Modular monolith with **DDD**: NestJS + TypeORM + Postgres backend, Next.js + React frontend.
+Modular monolith with **DDD**. Active Go track: **Go + pgx + Postgres** backend (`backend-go/`), Next.js + React frontend. NestJS reference remains in `backend/`.
 
-**Branches:** `master` = REST + localStorage JWT · GraphQL Apollo track · **Redux + httpOnly cookie JWT** = `feat/backend-nestjs-typeorm-postgres-httponly-jwt_frontend-nextjs-redux`.
+**Branches:** `master` = Nest REST + localStorage JWT · GraphQL Apollo · Redux httpOnly Nest · **Go modular monolith** = `feat/backend-golang-modular-monolith_frontend-nextjs-redux`.
 
 | Doc | Purpose |
 |-----|---------|
@@ -15,10 +15,10 @@ Modular monolith with **DDD**: NestJS + TypeORM + Postgres backend, Next.js + Re
 
 | Side | Technology |
 |------|------------|
-| Backend | NestJS · **TypeORM** · PostgreSQL · in-process event bus |
-| Frontend | Next.js App Router · React · REST (`NEXT_PUBLIC_API_BASE`) — **no ORM** |
+| Backend | **Go modular monolith** (`backend-go/`) · pgx · PostgreSQL · in-process event bus · Nest reference in `backend/` |
+| Frontend | Next.js App Router · React · Redux · REST via same-origin rewrites — **no ORM** |
 | Infra | Docker Compose (Postgres, Redis, Mailpit) |
-| Tests | Backend Jest · Frontend Vitest + Playwright |
+| Tests | Go unit + integration · Frontend Vitest + Playwright |
 
 ## Quick start
 
