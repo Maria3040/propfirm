@@ -3,11 +3,13 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { clearSession, getSession } from '@/lib/api';
+import { logoutSession } from '@/lib/api';
 import type { BasketLine } from '@/components/BasketCheckout';
 import { BasketDrawer } from '@/components/BasketDrawer';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { basketCount, readBasket, subscribeBasket, writeBasket } from '@/lib/basket';
+import { useSelector } from 'react-redux';
+import type { RootState } from '@/store';
 
 const NAV = [
   { href: '/accounts', label: 'Accounts', icon: 'accounts' },
@@ -145,10 +147,11 @@ function isActive(pathname: string, href: string) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const authUser = useSelector((s: RootState) => s.auth.user);
   const [basket, setBasket] = useState<BasketLine[]>([]);
   const [currency, setCurrency] = useState('USD');
   const [basketOpen, setBasketOpen] = useState(false);
-  const [hasSession, setHasSession] = useState(false);
+  const hasSession = !!authUser;
 
   const refreshBasket = useCallback(() => {
     const stored = readBasket();
@@ -161,10 +164,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return subscribeBasket(refreshBasket);
   }, [refreshBasket, pathname]);
 
-  useEffect(() => {
-    setHasSession(!!getSession());
-  }, [pathname]);
-
   const count = basketCount(basket);
 
   function persist(items: BasketLine[], cur = currency) {
@@ -172,9 +171,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setBasket(items);
   }
 
-  function logout() {
-    clearSession();
-    setHasSession(false);
+  async function logout() {
+    await logoutSession();
     router.push('/login');
   }
 

@@ -50,18 +50,22 @@ The composition root is the **root layout tree** — where global providers and 
 
 ```
 app/layout.tsx
-  └── AppChrome                    # route → shell | auth | marketing
-        └── ApolloAppProvider      # Apollo Client (GraphQL track)
-              └── AppShell | Auth | bare main
-                    └── {children}   # current page
+  └── AppChrome
+        └── ReduxProvider           # Redux Toolkit store
+              └── AuthBootstrap     # GET /api/users/me → auth slice
+              └── ApolloAppProvider
+                    └── AppShell | Auth | bare main
+                          └── {children}
 ```
 
 | File | Responsibility |
 |------|----------------|
 | [`app/layout.tsx`](app/layout.tsx) | HTML shell, global CSS, mounts `AppChrome` |
-| [`components/AppChrome.tsx`](components/AppChrome.tsx) | Chooses shell vs auth vs marketing by pathname; wraps all routes in `ApolloAppProvider` |
-| [`components/ApolloAppProvider.tsx`](components/ApolloAppProvider.tsx) | `ApolloProvider` + singleton client from `getApolloClient()` |
-| [`components/AppShell.tsx`](components/AppShell.tsx) | Sidebar, basket drawer, session/logout for app routes |
+| [`components/AppChrome.tsx`](components/AppChrome.tsx) | Route chrome + providers |
+| [`components/ReduxProvider.tsx`](components/ReduxProvider.tsx) | `react-redux` `Provider` |
+| [`components/AuthBootstrap.tsx`](components/AuthBootstrap.tsx) | Hydrate session from httpOnly cookie |
+| [`components/ApolloAppProvider.tsx`](components/ApolloAppProvider.tsx) | Apollo Client (credentials include) |
+| [`components/AppShell.tsx`](components/AppShell.tsx) | Sidebar / basket; reads `auth.user` from Redux |
 
 There is no DI container. Dependencies are **import-wired** modules and React context (Apollo only).
 
@@ -75,21 +79,22 @@ Nested layout example: [`app/settings/layout.tsx`](app/settings/layout.tsx) adds
 
 | Dependency | How it is wired |
 |------------|-----------------|
-| Nest REST | `lib/api.ts` → `fetch(`${API}${path}`)` with optional `Authorization: Bearer` from `localStorage` |
-| Nest GraphQL | `lib/apollo.ts` → `HttpLink` to `${API}/graphql` + `setContext` auth link |
+| Nest REST | `lib/api.ts` → `fetch` with `credentials: 'include'` (relative `/api` via Next rewrite) |
+| Nest GraphQL | `lib/apollo.ts` → same-origin `/graphql` + cookie credentials |
+| JWT | **httpOnly cookie** set by Nest (`propfirm_access`); not readable from JS |
+| Redux | `@reduxjs/toolkit` + `react-redux` — profile/UI only |
 | Path aliases | `tsconfig` `@/*` → project root (e.g. `@/lib/api`) |
-| Next config | `next.config.js` — `reactStrictMode: true` |
+| Next config | `rewrites` proxy `/api/*` and `/graphql` → `API_PROXY_TARGET` (default `http://127.0.0.1:6080`) |
 
 ### npm packages
 
 | Package | Role |
 |---------|------|
 | `next` / `react` / `react-dom` | App Router UI |
-| `@apollo/client` + `graphql` | GraphQL client (lab + optional queries) |
+| `@reduxjs/toolkit` / `react-redux` | Client state (auth profile, UI) |
+| `@apollo/client` + `graphql` | GraphQL client (lab) |
 | `vitest` / `jsdom` | Unit tests for `lib/*` |
 | `@playwright/test` | Browser smoke |
-
-No Redux, Zustand, React Query, or Context-based app store.
 
 ### Adapter modules (`lib/`)
 
@@ -107,18 +112,20 @@ Pages call adapters directly (e.g. `api('/api/...')`, `useQuery(ME_QUERY)`). No 
 
 ## State management
 
-**No global UI store.** State is layered as:
+**Redux Toolkit** (`store/`) holds non-secret app state:
 
-1. **Local React state** — `useState` / `useReducer`-style patterns via setters on each screen (forms, tabs, drawers, filters).
-2. **Browser persistence** — `localStorage` for cross-refresh concerns:
-   - Auth: `propfirm_token`, `propfirm_session`
-   - Basket: `propfirm_basket` (+ `propfirm-basket-change` event)
-   - Theme: `pf-theme` (`ThemeToggle`)
-   - Settings prefs / remembered login email where used
-3. **Server / remote state** — REST `fetch` in `useEffect` (or event handlers); GraphQL via **Apollo Client cache** on `/graphql-lab` (and any future `useQuery` callers).
-4. **URL state** — Next.js `useSearchParams` / `useParams` for checkout product, redirects, etc.
+| Slice | Responsibility |
+|-------|----------------|
+| `auth` | Trader profile (`userId`, email, role) after login / `/api/users/me` |
+| `ui` | Shell UI flags (e.g. basket open) |
 
-Cross-component sync for the basket uses a small **event bus** (`subscribeBasket`) rather than Context — `AppShell` listens and re-reads storage.
+**JWT is not in Redux or `localStorage`.** Nest sets an **httpOnly** cookie (`propfirm_access`). The browser sends it on same-origin requests (`credentials: 'include'` via Next rewrites to `:6080`).
+
+Basket lines remain in `localStorage` (`lib/basket.ts`) — cart is not secret auth state.
+
+Theme (`pf-theme`) stays in `localStorage` via `ThemeToggle`.
+
+Composition root: `AppChrome` → `ReduxProvider` → `AuthBootstrap` → `ApolloAppProvider` → shell/page.
 
 ---
 
@@ -143,24 +150,13 @@ This app uses **function components only**. Class lifecycles (`componentDidMount
 
 ## Custom hooks
 
-**There are no shared `use*` custom hooks** in this codebase today.
+App-owned `use*` hooks are still minimal. Reusable auth helpers stay in `lib/api.ts` + Redux actions.
 
-Reusable logic lives as **plain modules** instead:
+Library / framework hooks used:
 
-| Prefer | Why |
-|--------|-----|
-| `getSession` / `api` / `readBasket` | Works outside React; easy Vitest coverage |
-| Inline `useEffect` + `useState` in pages | Keeps demo screens self-contained |
-
-Apollo’s library hooks **are** used where GraphQL is demoed:
-
-- `useQuery` — [`app/graphql-lab/page.tsx`](app/graphql-lab/page.tsx)
-
-Next.js navigation hooks (framework, not app-owned):
-
-- `useRouter`, `usePathname`, `useParams`, `useSearchParams`
-
-If you extract a custom hook later, good candidates are `useSession()`, `useBasket()`, or `useApiQuery()` wrapping the existing `lib/*` adapters.
+- Redux: `useSelector`, `useDispatch`
+- Apollo: `useQuery` (GraphQL lab)
+- Next: `useRouter`, `usePathname`, `useParams`, `useSearchParams`
 
 ---
 

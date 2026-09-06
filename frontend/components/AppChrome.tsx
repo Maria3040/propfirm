@@ -6,6 +6,8 @@ import type { ReactNode } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { ChatWidget } from '@/components/ChatWidget';
 import { ApolloAppProvider } from '@/components/ApolloAppProvider';
+import { AuthBootstrap } from '@/components/AuthBootstrap';
+import { ReduxProvider } from '@/components/ReduxProvider';
 
 const APP_PREFIXES = [
   '/dashboard',
@@ -77,5 +79,10 @@ export function AppChrome({ children }: { children: ReactNode }) {
     );
   })();
 
-  return <ApolloAppProvider>{body}</ApolloAppProvider>;
+  return (
+    <ReduxProvider>
+      <AuthBootstrap />
+      <ApolloAppProvider>{body}</ApolloAppProvider>
+    </ReduxProvider>
+  );
 }

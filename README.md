@@ -2,7 +2,7 @@
 
 Modular monolith with **DDD**: NestJS + TypeORM + Postgres backend, Next.js + React frontend.
 
-**Branches:** `master` = REST API · `feat/backend-nestjs-graphql-typeorm-postgres_frontend-nextjs-apollo` = Nest GraphQL (Apollo) + Next Apollo Client (`/graphql` playground, `/graphql-lab` UI).
+**Branches:** `master` = REST + localStorage JWT · GraphQL Apollo track · **Redux + httpOnly cookie JWT** = `feat/backend-nestjs-typeorm-postgres-httponly-jwt_frontend-nextjs-redux`.
 
 | Doc | Purpose |
 |-----|---------|

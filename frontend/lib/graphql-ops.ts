@@ -59,7 +59,6 @@ export const LOGIN_MUTATION = gql`
       email
       displayName
       role
-      accessToken
     }
   }
 `;

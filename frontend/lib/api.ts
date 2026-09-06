@@ -1,32 +1,57 @@
-const API = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:6080';
+import { store } from '@/store';
+import { clearUser, setUser } from '@/store/authSlice';
+
+/**
+ * Same-origin by default (Next rewrites → Nest) so httpOnly cookies stay first-party.
+ * Override with NEXT_PUBLIC_API_BASE only for direct cross-origin debugging.
+ */
+const API = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
 export type AuthSession = {
   userId: string;
   email: string;
   displayName: string;
   role: string;
-  accessToken: string;
 };
 
+/** @deprecated Token is httpOnly — always null on the client. */
 export function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('propfirm_token');
+  return null;
 }
 
 export function saveSession(s: AuthSession) {
-  localStorage.setItem('propfirm_token', s.accessToken);
-  localStorage.setItem('propfirm_session', JSON.stringify(s));
+  store.dispatch(
+    setUser({
+      userId: s.userId,
+      email: s.email,
+      displayName: s.displayName,
+      role: s.role,
+    }),
+  );
 }
 
 export function clearSession() {
-  localStorage.removeItem('propfirm_token');
-  localStorage.removeItem('propfirm_session');
+  store.dispatch(clearUser());
 }
 
 export function getSession(): AuthSession | null {
-  if (typeof window === 'undefined') return null;
-  const raw = localStorage.getItem('propfirm_session');
-  return raw ? JSON.parse(raw) : null;
+  const user = store.getState().auth.user;
+  if (!user) return null;
+  return {
+    userId: user.userId,
+    email: user.email,
+    displayName: user.displayName,
+    role: user.role,
+  };
+}
+
+export async function logoutSession() {
+  try {
+    await api('/api/auth/logout', { method: 'POST', auth: false });
+  } catch {
+    /* still clear client state */
+  }
+  clearSession();
 }
 
 export async function api<T>(
@@ -37,16 +62,20 @@ export async function api<T>(
     'Content-Type': 'application/json',
     ...(opts.headers as Record<string, string>),
   };
-  if (opts.auth !== false) {
-    const token = getToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-  }
+  // JWT is sent automatically via httpOnly cookie (credentials: 'include').
+  void opts.auth;
+
   let res: Response;
   try {
-    res = await fetch(`${API}${path}`, { ...opts, headers });
+    res = await fetch(`${API}${path}`, {
+      ...opts,
+      headers,
+      credentials: 'include',
+    });
   } catch {
+    const base = API || '(same-origin via Next rewrite)';
     throw new Error(
-      `Failed to reach API at ${API}${path}. Start the backend (port 6080) and open the UI as http://localhost:3100 (not a different host).`,
+      `Failed to reach API at ${base}${path}. Ensure Nest is on :6080 and open http://localhost:3100.`,
     );
   }
   if (!res.ok) {
