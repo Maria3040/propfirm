@@ -16,7 +16,7 @@ import { PropFirmResolver } from './propfirm.resolver';
       sortSchema: true,
       playground: true,
       path: '/graphql',
-      context: ({ req }: { req: unknown }) => ({ req }),
+      context: ({ req, res }: { req: unknown; res: unknown }) => ({ req, res }),
     }),
     TypeOrmModule.forFeature(ALL_ENTITIES),
     JwtModule.register({ secret: settings.jwtKey }),

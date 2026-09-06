@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { settings } from '../config';
+import { setAuthCookie } from '../auth/auth-cookie';
 import { extractClientIp, lookupIpIntel } from '../infrastructure/ip-intel';
 import { LoginHistoryEntity, ProductEntity, TraderEntity } from '../persistence/entities';
 import { LoginArgs, ProductsArgs } from './args';
@@ -21,7 +22,7 @@ export class PropFirmResolver {
     @InjectRepository(LoginHistoryEntity) private readonly loginHistoryRepo: Repository<LoginHistoryEntity>,
   ) {}
 
-  private tokenFor(trader: TraderEntity): AuthPayloadGql {
+  private tokenFor(trader: TraderEntity, res: any): AuthPayloadGql {
     const accessToken = this.jwt.sign(
       { sub: trader.id, email: trader.email, role: trader.role, display_name: trader.displayName },
       {
@@ -31,12 +32,12 @@ export class PropFirmResolver {
         expiresIn: '8h',
       },
     );
+    if (res) setAuthCookie(res, accessToken);
     return {
       userId: trader.id,
       email: trader.email,
       displayName: trader.displayName,
       role: trader.role,
-      accessToken,
     };
   }
 
@@ -137,7 +138,7 @@ export class PropFirmResolver {
   }
 
   @Mutation(() => AuthPayloadGql)
-  async login(@Args() args: LoginArgs, @Context() ctx: { req: any }): Promise<AuthPayloadGql> {
+  async login(@Args() args: LoginArgs, @Context() ctx: { req: any; res: any }): Promise<AuthPayloadGql> {
     const email = (args.email || '').trim();
     const password = args.password || '';
     const trader = await this.traders
@@ -152,6 +153,6 @@ export class PropFirmResolver {
     } catch {
       /* non-fatal */
     }
-    return this.tokenFor(trader);
+    return this.tokenFor(trader, ctx.res);
   }
 }

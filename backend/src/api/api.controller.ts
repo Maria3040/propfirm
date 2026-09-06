@@ -8,14 +8,16 @@ import {
   Post,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { settings } from '../config';
+import { clearAuthCookie, setAuthCookie } from '../auth/auth-cookie';
 import { AppRuntime } from '../infrastructure/app-runtime';
 import { extractClientIp, lookupIpIntel } from '../infrastructure/ip-intel';
 import { DomainError } from '../shared-kernel';
@@ -83,7 +85,7 @@ export class ApiController {
     return u;
   }
 
-  private tokenFor(trader: TraderEntity) {
+  private tokenFor(trader: TraderEntity, res: Response) {
     const accessToken = this.jwt.sign(
       { sub: trader.id, email: trader.email, role: trader.role, display_name: trader.displayName },
       {
@@ -93,12 +95,13 @@ export class ApiController {
         expiresIn: '8h',
       },
     );
+    setAuthCookie(res, accessToken);
+    // JWT is httpOnly cookie only — never return the token in the JSON body.
     return {
       userId: trader.id,
       email: trader.email,
       displayName: trader.displayName,
       role: trader.role,
-      accessToken,
     };
   }
 
@@ -131,7 +134,11 @@ export class ApiController {
   }
 
   @Post('api/auth/register')
-  async register(@Body() body: any, @Req() req: Request) {
+  async register(
+    @Body() body: any,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const email = (body?.email || '').trim();
     const password = body?.password || '';
     const displayName = body?.displayName || email;
@@ -159,11 +166,15 @@ export class ApiController {
     } catch {
       /* non-fatal */
     }
-    return this.tokenFor(trader);
+    return this.tokenFor(trader, res);
   }
 
   @Post('api/auth/login')
-  async login(@Body() body: any, @Req() req: Request) {
+  async login(
+    @Body() body: any,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const email = (body?.email || '').trim();
     const password = body?.password || '';
     const trader = await this.traders
@@ -178,7 +189,13 @@ export class ApiController {
     } catch {
       /* non-fatal */
     }
-    return this.tokenFor(trader);
+    return this.tokenFor(trader, res);
+  }
+
+  @Post('api/auth/logout')
+  logout(@Res({ passthrough: true }) res: Response) {
+    clearAuthCookie(res);
+    return { ok: true };
   }
 
   @Get('api/users/me')

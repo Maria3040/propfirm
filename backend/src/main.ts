@@ -3,10 +3,22 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { settings } from './config';
 import { ensureDatabase } from './persistence/ensure-database';
+import cookieParser from 'cookie-parser';
+import type { NextFunction, Request, Response } from 'express';
 
 async function bootstrap() {
   await ensureDatabase();
   const app = await NestFactory.create(AppModule);
+  app.use(cookieParser());
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    if (!req.headers.authorization) {
+      const token = req.cookies?.[settings.authCookieName];
+      if (typeof token === 'string' && token) {
+        req.headers.authorization = `Bearer ${token}`;
+      }
+    }
+    next();
+  });
   const corsOrigins = settings.corsOrigin
     .split(',')
     .map((o) => o.trim())

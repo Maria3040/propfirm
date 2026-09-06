@@ -13,9 +13,6 @@ export class AuthPayloadGql {
 
   @Field()
   role!: string;
-
-  @Field()
-  accessToken!: string;
 }
 
 @ObjectType()
