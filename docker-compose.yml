@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: propfirm-postgres
+    environment:
+      POSTGRES_USER: propfirm
+      POSTGRES_PASSWORD: propfirm_dev
+      POSTGRES_DB: propfirm
+    ports:
+      - "15433:5432"
+    volumes:
+      - propfirm_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U propfirm -d propfirm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: propfirm-redis
+    ports:
+      - "6380:6379"
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: propfirm-mailpit
+    ports:
+      - "8026:8025"
+      - "2525:1025"
+
+volumes:
+  propfirm_pg:
