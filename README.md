@@ -1,24 +1,25 @@
 # PropFirm — FundingPips-style evaluation platform
 
-Modular monolith with **DDD**. Active Go track: **Go + pgx + Postgres** backend (`backend-go/`), Next.js + React frontend. NestJS reference remains in `backend/`.
+Modular monolith with **DDD**. Active Python track: **FastAPI + SQLAlchemy + Postgres + Redis** (`backend-python/`), Next.js + React frontend. Nest/Go remain as references.
 
-**Branches:** `master` = Nest REST + localStorage JWT · GraphQL Apollo · Redux httpOnly Nest · **Go modular monolith** = `feat/backend-golang-modular-monolith_frontend-nextjs-redux`.
+**Branches:** `master` = Nest REST + localStorage JWT · GraphQL Apollo · Redux httpOnly Nest · Go modular monolith · **Python** = `feat/backend-python-fastapi-sqlalchemy-postgres-redis_frontend-nextjs-redux`.
 
 | Doc | Purpose |
 |-----|---------|
 | [docs/USER-STORIES.md](docs/USER-STORIES.md) | Epics & acceptance criteria |
 | [docs/BOUNDED-CONTEXTS.md](docs/BOUNDED-CONTEXTS.md) | BC map from stories |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical overview |
+| [backend-python/README.md](backend-python/README.md) | **Python DDD / Clean Architecture** modular monolith + Redis + admin |
 | [docs/diagrams/](docs/diagrams/) | **UML (PlantUML)** + **BPMN** for [bpmn.io](https://demo.bpmn.io) |
 
 ## Stack
 
 | Side | Technology |
 |------|------------|
-| Backend | **Go modular monolith** (`backend-go/`) · pgx · PostgreSQL · in-process event bus · Nest reference in `backend/` |
+| Backend | **Python FastAPI** (`backend-python/`) · SQLAlchemy 2 · PostgreSQL · Redis (cache / rate-limit / JWT denylist) · Nest/Go references |
 | Frontend | Next.js App Router · React · Redux · REST via same-origin rewrites — **no ORM** |
 | Infra | Docker Compose (Postgres, Redis, Mailpit) |
-| Tests | Go unit + integration · Frontend Vitest + Playwright |
+| Tests | pytest unit + integration · Frontend Vitest + Playwright |
 
 ## Quick start
 
@@ -34,6 +35,7 @@ powershell -ExecutionPolicy Bypass -File .\start-propfirm.ps1
 | API | http://localhost:6080 |
 | Mailpit | http://localhost:8026 |
 | Postgres | localhost:15433 (`propfirm` / `propfirm_dev`) |
+| Redis | localhost:6380 (architecture layer — see `backend-python/README.md`) |
 | SMTP | localhost:2525 |
 
 **Demo logins:** `trader@propfirm.local` / `Trader1!` · `admin@propfirm.local` / `Admin1!`

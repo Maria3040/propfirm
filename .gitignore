@@ -15,3 +15,9 @@ backend/src/graphql/schema.gql
 
 
 backend-go/*.exe~
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+backend-python/.venv/

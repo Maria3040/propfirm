@@ -30,7 +30,7 @@ Write-Host "challenge detail..."
 $ch = Invoke-RestMethod "$base/api/challenges/$cid" -WebSession $session
 Write-Host "status=$($ch.status) equity=$($ch.account.equity)"
 
-Write-Host "OK - PropFirm smoke passed"
+Write-Host "OK - PropFirm smoke passed (Python FastAPI track)"
 
 Write-Host "coupon validate..."
 $coupon = Invoke-RestMethod -Method POST "$base/api/coupons/validate" -WebSession $session -ContentType "application/json" `
