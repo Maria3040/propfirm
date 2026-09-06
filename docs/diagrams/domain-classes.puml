@@ -1,0 +1,98 @@
+@startuml propfirm-domain-classes
+!theme plain
+title PropFirm — Domain / persistence UML (simplified)
+
+package "Users BC" {
+  class Trader {
+    +id
+    +email
+    +passwordHash
+    +displayName
+    +role
+  }
+  class LoginHistory {
+    +id
+    +traderId
+    +ip
+    +country
+    +connectionKind
+    +isVpn
+    +isVps
+    +createdAt
+  }
+  Trader "1" --> "*" LoginHistory : records
+}
+
+package "Catalog BC" {
+  class ChallengeProduct {
+    +sku
+    +phaseFamily
+    +variant
+    +accountSize
+    +price
+    +targets / losses
+  }
+}
+
+package "Commerce BC" {
+  class Order {
+    +traderId
+    +productId
+    +pricePaid
+    +addonSwapFree
+    +status
+  }
+}
+
+package "Challenges BC" {
+  class Challenge {
+    +traderId
+    +status
+    +currentPhase
+    +equity
+  }
+}
+
+package "Trading BC" {
+  class TradingAccount {
+    +login
+    +platform
+    +server
+  }
+}
+
+package "Risk BC" {
+  class Breach {
+    +rule
+    +reason
+  }
+  class RiskRules <<pure>> {
+    +evaluateRisk()
+  }
+}
+
+package "Payouts BC" {
+  class Wallet
+  class PayoutRequest
+}
+
+package "Notifications BC" {
+  class NotificationMessage
+}
+
+Trader --> Order : places
+ChallengeProduct --> Order : snapshotted in
+Order --> Challenge : provisions
+Challenge --> TradingAccount
+Challenge --> Breach
+Challenge --> RiskRules
+Trader --> Wallet
+Wallet --> PayoutRequest
+Order ..> NotificationMessage : event bus
+Challenge ..> NotificationMessage
+
+note bottom of RiskRules
+  Pure domain function —
+  covered by unit tests
+end note
+@enduml

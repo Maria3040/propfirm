@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+  id="Definitions_PropFirm"
+  targetNamespace="http://propfirm.local/bpmn"
+  exporter="PropFirm"
+  exporterVersion="1.0">
+
+  <bpmn:collaboration id="Collaboration_1">
+    <bpmn:participant id="Participant_Trader" name="Trader (Next.js UI)" processRef="Process_Purchase" />
+    <bpmn:participant id="Participant_API" name="PropFirm API (NestJS)" processRef="Process_API" />
+    <bpmn:participant id="Participant_Mail" name="Mail / Mailpit" processRef="Process_Mail" />
+    <bpmn:messageFlow id="MF_1" sourceRef="Task_SubmitCheckout" targetRef="Task_CreateOrder" />
+    <bpmn:messageFlow id="MF_2" sourceRef="Task_ConfirmPay" targetRef="Task_MarkPaid" />
+    <bpmn:messageFlow id="MF_3" sourceRef="Task_Provision" targetRef="Task_SendMail" />
+    <bpmn:messageFlow id="MF_4" sourceRef="Task_SendMail" targetRef="Task_SeeAccounts" />
+  </bpmn:collaboration>
+
+  <!-- Trader UI lane process -->
+  <bpmn:process id="Process_Purchase" isExecutable="false">
+    <bpmn:startEvent id="Start_Browse" name="Open catalog">
+      <bpmn:outgoing>SF_T1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_Configure" name="Configure challenge&#10;(phase / variant / size)">
+      <bpmn:incoming>SF_T1</bpmn:incoming>
+      <bpmn:outgoing>SF_T2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_Basket" name="Add to basket">
+      <bpmn:incoming>SF_T2</bpmn:incoming>
+      <bpmn:outgoing>SF_T3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_SubmitCheckout" name="Checkout / Buy">
+      <bpmn:incoming>SF_T3</bpmn:incoming>
+      <bpmn:outgoing>SF_T4</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_ConfirmPay" name="Confirm mock payment">
+      <bpmn:incoming>SF_T4</bpmn:incoming>
+      <bpmn:outgoing>SF_T5</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_SeeAccounts" name="View accounts / challenge">
+      <bpmn:incoming>SF_T5</bpmn:incoming>
+      <bpmn:outgoing>SF_T6</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="End_FundedPath" name="Trade / risk / payout later">
+      <bpmn:incoming>SF_T6</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="SF_T1" sourceRef="Start_Browse" targetRef="Task_Configure" />
+    <bpmn:sequenceFlow id="SF_T2" sourceRef="Task_Configure" targetRef="Task_Basket" />
+    <bpmn:sequenceFlow id="SF_T3" sourceRef="Task_Basket" targetRef="Task_SubmitCheckout" />
+    <bpmn:sequenceFlow id="SF_T4" sourceRef="Task_SubmitCheckout" targetRef="Task_ConfirmPay" />
+    <bpmn:sequenceFlow id="SF_T5" sourceRef="Task_ConfirmPay" targetRef="Task_SeeAccounts" />
+    <bpmn:sequenceFlow id="SF_T6" sourceRef="Task_SeeAccounts" targetRef="End_FundedPath" />
+  </bpmn:process>
+
+  <!-- API process -->
+  <bpmn:process id="Process_API" isExecutable="false">
+    <bpmn:startEvent id="Start_API" name="REST request">
+      <bpmn:outgoing>SF_A1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_CreateOrder" name="Create order&#10;(Commerce BC)">
+      <bpmn:incoming>SF_A1</bpmn:incoming>
+      <bpmn:outgoing>SF_A2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_MarkPaid" name="Mark paid + publish event">
+      <bpmn:incoming>SF_A2</bpmn:incoming>
+      <bpmn:outgoing>SF_A3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_Provision" name="Provision challenge +&#10;trading account">
+      <bpmn:incoming>SF_A3</bpmn:incoming>
+      <bpmn:outgoing>SF_A4</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="End_API" name="Done">
+      <bpmn:incoming>SF_A4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="SF_A1" sourceRef="Start_API" targetRef="Task_CreateOrder" />
+    <bpmn:sequenceFlow id="SF_A2" sourceRef="Task_CreateOrder" targetRef="Task_MarkPaid" />
+    <bpmn:sequenceFlow id="SF_A3" sourceRef="Task_MarkPaid" targetRef="Task_Provision" />
+    <bpmn:sequenceFlow id="SF_A4" sourceRef="Task_Provision" targetRef="End_API" />
+  </bpmn:process>
+
+  <!-- Mail process -->
+  <bpmn:process id="Process_Mail" isExecutable="false">
+    <bpmn:startEvent id="Start_Mail" name="Notification event">
+      <bpmn:outgoing>SF_M1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_SendMail" name="SMTP send&#10;(Mailpit :8026)">
+      <bpmn:incoming>SF_M1</bpmn:incoming>
+      <bpmn:outgoing>SF_M2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="End_Mail" name="Inbox updated">
+      <bpmn:incoming>SF_M2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="SF_M1" sourceRef="Start_Mail" targetRef="Task_SendMail" />
+    <bpmn:sequenceFlow id="SF_M2" sourceRef="Task_SendMail" targetRef="End_Mail" />
+  </bpmn:process>
+
+  <!-- Login + security history (second collaboration-friendly process) -->
+  <bpmn:process id="Process_LoginHistory" name="Login + IP intelligence" isExecutable="false">
+    <bpmn:startEvent id="Start_Login" name="Open /login">
+      <bpmn:outgoing>SF_L1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Task_EnterCreds" name="Enter email / password&#10;(+ optional public IP)">
+      <bpmn:incoming>SF_L1</bpmn:incoming>
+      <bpmn:outgoing>SF_L2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_AuthApi" name="POST /api/auth/login">
+      <bpmn:incoming>SF_L2</bpmn:incoming>
+      <bpmn:outgoing>SF_L3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="GW_Auth" name="Credentials OK?">
+      <bpmn:incoming>SF_L3</bpmn:incoming>
+      <bpmn:outgoing>SF_L4a</bpmn:outgoing>
+      <bpmn:outgoing>SF_L4b</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:task id="Task_IpIntel" name="Lookup IP intel&#10;(VPN / VPS / residential)">
+      <bpmn:incoming>SF_L4a</bpmn:incoming>
+      <bpmn:outgoing>SF_L5</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_SaveHistory" name="Persist login_history row">
+      <bpmn:incoming>SF_L5</bpmn:incoming>
+      <bpmn:outgoing>SF_L6</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_IssueJwt" name="Return JWT session">
+      <bpmn:incoming>SF_L6</bpmn:incoming>
+      <bpmn:outgoing>SF_L7</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:task id="Task_ViewHistory" name="GET login-history&#10;Settings → Security">
+      <bpmn:incoming>SF_L7</bpmn:incoming>
+      <bpmn:outgoing>SF_L8</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:endEvent id="End_LoginOk" name="History visible">
+      <bpmn:incoming>SF_L8</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="End_LoginFail" name="401 unauthorized">
+      <bpmn:incoming>SF_L4b</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="SF_L1" sourceRef="Start_Login" targetRef="Task_EnterCreds" />
+    <bpmn:sequenceFlow id="SF_L2" sourceRef="Task_EnterCreds" targetRef="Task_AuthApi" />
+    <bpmn:sequenceFlow id="SF_L3" sourceRef="Task_AuthApi" targetRef="GW_Auth" />
+    <bpmn:sequenceFlow id="SF_L4a" name="yes" sourceRef="GW_Auth" targetRef="Task_IpIntel" />
+    <bpmn:sequenceFlow id="SF_L4b" name="no" sourceRef="GW_Auth" targetRef="End_LoginFail" />
+    <bpmn:sequenceFlow id="SF_L5" sourceRef="Task_IpIntel" targetRef="Task_SaveHistory" />
+    <bpmn:sequenceFlow id="SF_L6" sourceRef="Task_SaveHistory" targetRef="Task_IssueJwt" />
+    <bpmn:sequenceFlow id="SF_L7" sourceRef="Task_IssueJwt" targetRef="Task_ViewHistory" />
+    <bpmn:sequenceFlow id="SF_L8" sourceRef="Task_ViewHistory" targetRef="End_LoginOk" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Purchase">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1">
+      <bpmndi:BPMNShape id="Shape_Part_Trader" bpmnElement="Participant_Trader" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="1000" height="160" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Part_API" bpmnElement="Participant_API" isHorizontal="true">
+        <dc:Bounds x="160" y="280" width="1000" height="140" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Part_Mail" bpmnElement="Participant_Mail" isHorizontal="true">
+        <dc:Bounds x="160" y="460" width="1000" height="120" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_Start_Browse" bpmnElement="Start_Browse">
+        <dc:Bounds x="200" y="132" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Configure" bpmnElement="Task_Configure">
+        <dc:Bounds x="270" y="110" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Basket" bpmnElement="Task_Basket">
+        <dc:Bounds x="420" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_SubmitCheckout" bpmnElement="Task_SubmitCheckout">
+        <dc:Bounds x="550" y="110" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_ConfirmPay" bpmnElement="Task_ConfirmPay">
+        <dc:Bounds x="700" y="110" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_SeeAccounts" bpmnElement="Task_SeeAccounts">
+        <dc:Bounds x="860" y="110" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_FundedPath" bpmnElement="End_FundedPath">
+        <dc:Bounds x="1020" y="132" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_Start_API" bpmnElement="Start_API">
+        <dc:Bounds x="200" y="322" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_CreateOrder" bpmnElement="Task_CreateOrder">
+        <dc:Bounds x="550" y="300" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_MarkPaid" bpmnElement="Task_MarkPaid">
+        <dc:Bounds x="700" y="300" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Provision" bpmnElement="Task_Provision">
+        <dc:Bounds x="860" y="300" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_API" bpmnElement="End_API">
+        <dc:Bounds x="1020" y="322" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Shape_Start_Mail" bpmnElement="Start_Mail">
+        <dc:Bounds x="200" y="492" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_SendMail" bpmnElement="Task_SendMail">
+        <dc:Bounds x="860" y="470" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Mail" bpmnElement="End_Mail">
+        <dc:Bounds x="1020" y="492" width="36" height="36" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Edge_SF_T1" bpmnElement="SF_T1">
+        <di:waypoint x="236" y="150" /><di:waypoint x="270" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_T2" bpmnElement="SF_T2">
+        <di:waypoint x="390" y="150" /><di:waypoint x="420" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_T3" bpmnElement="SF_T3">
+        <di:waypoint x="520" y="150" /><di:waypoint x="550" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_T4" bpmnElement="SF_T4">
+        <di:waypoint x="660" y="150" /><di:waypoint x="700" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_T5" bpmnElement="SF_T5">
+        <di:waypoint x="820" y="150" /><di:waypoint x="860" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_T6" bpmnElement="SF_T6">
+        <di:waypoint x="980" y="150" /><di:waypoint x="1020" y="150" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_SF_A1" bpmnElement="SF_A1">
+        <di:waypoint x="236" y="340" /><di:waypoint x="550" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_A2" bpmnElement="SF_A2">
+        <di:waypoint x="660" y="340" /><di:waypoint x="700" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_A3" bpmnElement="SF_A3">
+        <di:waypoint x="820" y="340" /><di:waypoint x="860" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_A4" bpmnElement="SF_A4">
+        <di:waypoint x="980" y="340" /><di:waypoint x="1020" y="340" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_SF_M1" bpmnElement="SF_M1">
+        <di:waypoint x="236" y="510" /><di:waypoint x="860" y="510" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_M2" bpmnElement="SF_M2">
+        <di:waypoint x="980" y="510" /><di:waypoint x="1020" y="510" />
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Edge_MF_1" bpmnElement="MF_1">
+        <di:waypoint x="605" y="190" /><di:waypoint x="605" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MF_2" bpmnElement="MF_2">
+        <di:waypoint x="760" y="190" /><di:waypoint x="760" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MF_3" bpmnElement="MF_3">
+        <di:waypoint x="920" y="380" /><di:waypoint x="920" y="470" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_MF_4" bpmnElement="MF_4">
+        <di:waypoint x="920" y="470" /><di:waypoint x="920" y="190" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Login">
+    <bpmndi:BPMNPlane id="BPMNPlane_Login" bpmnElement="Process_LoginHistory">
+      <bpmndi:BPMNShape id="Shape_Start_Login" bpmnElement="Start_Login">
+        <dc:Bounds x="152" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_EnterCreds" bpmnElement="Task_EnterCreds">
+        <dc:Bounds x="230" y="80" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_AuthApi" bpmnElement="Task_AuthApi">
+        <dc:Bounds x="400" y="80" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_GW_Auth" bpmnElement="GW_Auth" isMarkerVisible="true">
+        <dc:Bounds x="565" y="95" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_IpIntel" bpmnElement="Task_IpIntel">
+        <dc:Bounds x="660" y="80" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_SaveHistory" bpmnElement="Task_SaveHistory">
+        <dc:Bounds x="820" y="80" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_IssueJwt" bpmnElement="Task_IssueJwt">
+        <dc:Bounds x="970" y="80" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_ViewHistory" bpmnElement="Task_ViewHistory">
+        <dc:Bounds x="1120" y="80" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_LoginOk" bpmnElement="End_LoginOk">
+        <dc:Bounds x="1300" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_LoginFail" bpmnElement="End_LoginFail">
+        <dc:Bounds x="572" y="220" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_SF_L1" bpmnElement="SF_L1">
+        <di:waypoint x="188" y="120" /><di:waypoint x="230" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_L2" bpmnElement="SF_L2">
+        <di:waypoint x="360" y="120" /><di:waypoint x="400" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_L3" bpmnElement="SF_L3">
+        <di:waypoint x="520" y="120" /><di:waypoint x="565" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_L4a" bpmnElement="SF_L4a">
+        <di:waypoint x="615" y="120" /><di:waypoint x="660" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_L4b" bpmnElement="SF_L4b">
+        <di:waypoint x="590" y="145" /><di:waypoint x="590" y="220" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_L5" bpmnElement="SF_L5">
+        <di:waypoint x="790" y="120" /><di:waypoint x="820" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_L6" bpmnElement="SF_L6">
+        <di:waypoint x="940" y="120" /><di:waypoint x="970" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_L7" bpmnElement="SF_L7">
+        <di:waypoint x="1080" y="120" /><di:waypoint x="1120" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_SF_L8" bpmnElement="SF_L8">
+        <di:waypoint x="1250" y="120" /><di:waypoint x="1300" y="120" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

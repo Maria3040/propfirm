@@ -1,0 +1,29 @@
+@startuml propfirm-sequence-login
+!theme plain
+title Sequence — Login + login history
+
+actor Trader
+participant "Next.js /login" as UI
+participant "Nest API" as API
+database Postgres
+participant "ip-api.com" as IP
+
+Trader -> UI : email + password
+UI -> UI : optional fetch public IP (ipify)
+UI -> API : POST /api/auth/login {email,password,clientIp}
+API -> Postgres : find trader + verify bcrypt
+alt invalid
+  API --> UI : 401
+else valid
+  API -> IP : GET /json/{ip}?fields=proxy,hosting,...
+  IP --> API : country, proxy, hosting
+  API -> API : classify VPN / VPS / residential / local
+  API -> Postgres : INSERT users.login_history
+  API --> UI : JWT session
+  UI -> UI : saveSession(localStorage)
+  Trader -> UI : Settings → Security
+  UI -> API : GET /api/users/me/login-history
+  API -> Postgres : SELECT by traderId
+  API --> UI : rows (ip, country, kind, isp)
+end
+@enduml

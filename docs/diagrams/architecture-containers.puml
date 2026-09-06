@@ -1,0 +1,38 @@
+@startuml propfirm-c4-containers
+!theme plain
+title PropFirm — Container diagram (UML deployment / C4-style)
+
+actor Trader
+actor Admin
+
+node "Browser" {
+  component "Next.js UI :3100" as UI
+}
+
+node "App host" {
+  component "NestJS API :6080\n(DDD modules + bus)" as API
+}
+
+database "Postgres :15433\n(schemas per BC)\nTypeORM" as PG
+component "Mailpit\nSMTP :2525 / UI :8026" as Mail
+component "Redis :6380\n(reserved)" as Redis
+cloud "ip-api.com\n(IP intel)" as IP
+
+Trader --> UI : HTTPS
+Admin --> UI
+UI --> API : REST + JWT
+API --> PG : TypeORM
+API --> Mail : SMTP
+API --> IP : lookup on login
+API ..> Redis : optional cache
+
+note right of UI
+  **No frontend ORM**
+  Data via REST only
+end note
+
+note right of API
+  ORM lives here only
+  (TypeORM entities)
+end note
+@enduml
