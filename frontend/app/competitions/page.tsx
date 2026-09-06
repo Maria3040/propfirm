@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, getSession } from '@/lib/api';
 import {
   COMPETITIONS,
@@ -10,9 +11,12 @@ import {
   type Competition,
   type CompetitionStatus,
 } from '@/lib/competitions-data';
+import { useFilteredPagination } from '@/lib/list-utils';
+import { VirtualizedList } from '@/components/VirtualizedList';
 
 type Tab = 'joined' | 'propfirm' | 'championships' | 'hosted';
 type ModalKind = 'prize' | 'about' | null;
+type StatusFilter = 'all' | CompetitionStatus;
 
 function StatusDot({ status }: { status: CompetitionStatus }) {
   return (
@@ -91,11 +95,17 @@ function CompModal({
 function FeaturedCard({
   c,
   countdown,
+  joined,
+  joining,
+  onJoin,
   onShowPrizes,
   onMoreInfo,
 }: {
   c: Competition;
   countdown: string;
+  joined: boolean;
+  joining: boolean;
+  onJoin: () => void;
   onShowPrizes: () => void;
   onMoreInfo: () => void;
 }) {
@@ -130,13 +140,31 @@ function FeaturedCard({
             <strong>{formatShortDate(c.endsAt)}</strong>
           </div>
           <div>
-            <p>Ending in</p>
-            <strong>{c.status === 'ended' ? '00:00:00' : countdown}</strong>
+            <p>{c.status === 'upcoming' ? 'Starts in' : 'Ending in'}</p>
+            <strong>
+              {c.status === 'ended'
+                ? '00:00:00'
+                : countdown}
+            </strong>
           </div>
         </div>
         <div className="comp-featured-actions">
-          <Link href={`/competitions/${c.id}`} className="comp-btn-primary">
-            View
+          {c.status === 'upcoming' ? (
+            <button
+              type="button"
+              className="comp-btn-primary"
+              disabled={joined || joining}
+              onClick={onJoin}
+            >
+              {joined ? 'Joined' : joining ? 'Joining…' : 'Join'}
+            </button>
+          ) : (
+            <Link href={`/competitions/${c.id}`} className="comp-btn-primary">
+              View
+            </Link>
+          )}
+          <Link href={`/competitions/${c.id}`} className="comp-btn-ghost">
+            Details
           </Link>
           <button type="button" className="comp-btn-ghost" onClick={onShowPrizes}>
             Show Prizepool
@@ -154,11 +182,25 @@ function FeaturedCard({
   );
 }
 
-function CompetitionCard({ c, countdown }: { c: Competition; countdown: string }) {
+function CompetitionCard({
+  c,
+  countdown,
+  joined,
+  joining,
+  onJoin,
+}: {
+  c: Competition;
+  countdown: string;
+  joined: boolean;
+  joining: boolean;
+  onJoin: () => void;
+}) {
   return (
     <article className="comp-card">
       <div className="comp-card-timer">
-        <time dateTime={c.endsAt}>{c.status === 'ended' ? '00:00:00' : countdown}</time>
+        <time dateTime={c.status === 'upcoming' ? c.startsAt : c.endsAt}>
+          {c.status === 'ended' ? '00:00:00' : countdown}
+        </time>
       </div>
       <h2>{c.title}</h2>
       <div className="comp-card-meta">
@@ -177,19 +219,46 @@ function CompetitionCard({ c, countdown }: { c: Competition; countdown: string }
           <span>{c.host}</span>
           <span>{c.platform}</span>
         </div>
-        <Link href={`/competitions/${c.id}`} className="comp-btn-primary compact">
-          View
-        </Link>
+        <div className="comp-card-actions">
+          {c.status === 'upcoming' && (
+            <button
+              type="button"
+              className="comp-btn-primary compact"
+              disabled={joined || joining}
+              onClick={onJoin}
+            >
+              {joined ? 'Joined' : joining ? '…' : 'Join'}
+            </button>
+          )}
+          <Link href={`/competitions/${c.id}`} className="comp-btn-primary compact">
+            View
+          </Link>
+        </div>
       </footer>
     </article>
   );
 }
 
 export default function CompetitionsPage() {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>('propfirm');
   const [name, setName] = useState('Trader');
   const [now, setNow] = useState(() => Date.now());
   const [modal, setModal] = useState<ModalKind>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [joinedIds, setJoinedIds] = useState<Set<string>>(new Set());
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [joinMsg, setJoinMsg] = useState('');
+  const [joinErr, setJoinErr] = useState('');
+
+  const matchCompetition = useCallback((c: Competition, q: string) => {
+    return (
+      c.title.toLowerCase().includes(q) ||
+      c.platform.toLowerCase().includes(q) ||
+      c.host.toLowerCase().includes(q) ||
+      c.status.includes(q)
+    );
+  }, []);
 
   useEffect(() => {
     const session = getSession();
@@ -202,6 +271,9 @@ export default function CompetitionsPage() {
         const n = session?.displayName || 'Trader';
         setName(n.split(/\s+/)[0] || n);
       });
+    api<{ competitionIds: string[] }>('/api/competitions/joined')
+      .then((res) => setJoinedIds(new Set(res.competitionIds || [])))
+      .catch(() => setJoinedIds(new Set()));
   }, []);
 
   useEffect(() => {
@@ -209,11 +281,54 @@ export default function CompetitionsPage() {
     return () => clearInterval(t);
   }, []);
 
-  const featured = useMemo(() => COMPETITIONS.find((c) => c.featured) || COMPETITIONS[0], []);
-  const list = useMemo(() => {
-    if (tab === 'joined' || tab === 'hosted' || tab === 'championships') return [] as Competition[];
+  const featured = useMemo(
+    () => COMPETITIONS.find((c) => c.featured) || COMPETITIONS.find((c) => c.status === 'upcoming') || COMPETITIONS[0],
+    [],
+  );
+
+  const tabList = useMemo(() => {
+    if (tab === 'championships' || tab === 'hosted') return [] as Competition[];
+    if (tab === 'joined') return COMPETITIONS.filter((c) => joinedIds.has(c.id));
     return COMPETITIONS;
-  }, [tab]);
+  }, [tab, joinedIds]);
+
+  const statusScoped = useMemo(() => {
+    if (statusFilter === 'all') return tabList;
+    return tabList.filter((c) => c.status === statusFilter);
+  }, [tabList, statusFilter]);
+
+  const listState = useFilteredPagination(statusScoped, matchCompetition, 12);
+
+  async function joinCompetition(c: Competition) {
+    setJoinErr('');
+    setJoinMsg('');
+    if (!getSession()) {
+      router.push(`/login?next=${encodeURIComponent('/competitions')}`);
+      return;
+    }
+    setJoiningId(c.id);
+    try {
+      const res = await api<{ joined: boolean; alreadyJoined: boolean; emailSent: boolean }>(
+        `/api/competitions/${c.id}/join`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ title: c.title }),
+        },
+      );
+      setJoinedIds((prev) => new Set(prev).add(c.id));
+      if (res.alreadyJoined) {
+        setJoinMsg(`Already joined “${c.title}”.`);
+      } else if (res.emailSent) {
+        setJoinMsg(`Joined “${c.title}”. Confirmation email sent — check Mailpit.`);
+      } else {
+        setJoinMsg(`Joined “${c.title}”. Email could not be delivered (is Mailpit on :2525?).`);
+      }
+    } catch (ex: unknown) {
+      setJoinErr(ex instanceof Error ? ex.message : 'Join failed');
+    } finally {
+      setJoiningId(null);
+    }
+  }
 
   const initial = (name || 'T').charAt(0).toUpperCase();
 
@@ -228,11 +343,23 @@ export default function CompetitionsPage() {
         <div className="comp-featured-wrap">
           <FeaturedCard
             c={featured}
-            countdown={formatCountdown(featured.endsAt, now)}
+            countdown={formatCountdown(
+              featured.status === 'upcoming' ? featured.startsAt : featured.endsAt,
+              now,
+            )}
+            joined={joinedIds.has(featured.id)}
+            joining={joiningId === featured.id}
+            onJoin={() => joinCompetition(featured)}
             onShowPrizes={() => setModal('prize')}
             onMoreInfo={() => setModal('about')}
           />
         </div>
+
+        {(joinMsg || joinErr) && (
+          <p className={joinErr ? 'err' : 'comp-join-toast'} role="status">
+            {joinErr || joinMsg}
+          </p>
+        )}
 
         <div className="comp-tabs-row">
           <div className="comp-tabs">
@@ -256,19 +383,104 @@ export default function CompetitionsPage() {
           </div>
         </div>
 
+        <div className="comp-toolbar">
+          <label className="comp-search">
+            <span className="sr-only">Search competitions</span>
+            <input
+              type="search"
+              placeholder="Filter by title, platform…"
+              value={listState.query}
+              onChange={(e) => listState.setQuery(e.target.value)}
+            />
+          </label>
+          <label className="comp-filter">
+            Status
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as StatusFilter);
+                listState.setPage(1);
+              }}
+            >
+              <option value="all">All</option>
+              <option value="upcoming">Upcoming</option>
+              <option value="ongoing">Ongoing</option>
+              <option value="ended">Ended</option>
+            </select>
+          </label>
+          <label className="comp-filter">
+            Page size
+            <select
+              value={listState.pageSize}
+              onChange={(e) => listState.setPageSize(Number(e.target.value))}
+            >
+              <option value={8}>8</option>
+              <option value={12}>12</option>
+              <option value={24}>24</option>
+              <option value={48}>48</option>
+            </select>
+          </label>
+          <p className="comp-toolbar-meta">
+            {listState.filteredTotal} matches · page {listState.page}/{listState.pageCount}
+          </p>
+        </div>
+
         <section className="comp-list">
-          {list.length === 0 ? (
+          {listState.pageItems.length === 0 ? (
             <div className="comp-list-empty">
-              <p>No competitions in this tab yet.</p>
+              <p>
+                {tab === 'joined'
+                  ? 'No joined competitions yet. Join an upcoming event to see it here.'
+                  : 'No competitions match this filter.'}
+              </p>
             </div>
           ) : (
-            <div className="comp-grid">
-              {list.map((c) => (
-                <CompetitionCard key={c.id} c={c} countdown={formatCountdown(c.endsAt, now)} />
-              ))}
-            </div>
+            <VirtualizedList
+              items={listState.pageItems}
+              estimateSize={200}
+              height={Math.min(640, 24 + listState.pageItems.length * 200)}
+              getKey={(c) => c.id}
+              renderRow={(c) => (
+                <div className="comp-virt-row">
+                  <CompetitionCard
+                    c={c}
+                    countdown={formatCountdown(
+                      c.status === 'upcoming' ? c.startsAt : c.endsAt,
+                      now,
+                    )}
+                    joined={joinedIds.has(c.id)}
+                    joining={joiningId === c.id}
+                    onJoin={() => joinCompetition(c)}
+                  />
+                </div>
+              )}
+            />
           )}
         </section>
+
+        {listState.pageCount > 1 && (
+          <div className="comp-pager">
+            <button
+              type="button"
+              className="comp-btn-ghost"
+              disabled={listState.page <= 1}
+              onClick={() => listState.setPage(listState.page - 1)}
+            >
+              Previous
+            </button>
+            <span>
+              Page {listState.page} of {listState.pageCount}
+            </span>
+            <button
+              type="button"
+              className="comp-btn-ghost"
+              disabled={listState.page >= listState.pageCount}
+              onClick={() => listState.setPage(listState.page + 1)}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
 
       <CompModal

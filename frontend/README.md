@@ -125,6 +125,8 @@ Basket lines remain in `localStorage` (`lib/basket.ts`) — cart is not secret a
 
 Theme (`pf-theme`) stays in `localStorage` via `ThemeToggle`.
 
+**Large lists:** `lib/list-utils.ts` (`useFilteredPagination`) + `components/VirtualizedList.tsx` (`@tanstack/react-virtual`) — used on Competitions (filter → paginate → virtualize). Reuse the same pair for leaderboards / accounts later.
+
 Composition root: `AppChrome` → `ReduxProvider` → `AuthBootstrap` → `ApolloAppProvider` → shell/page.
 
 ---

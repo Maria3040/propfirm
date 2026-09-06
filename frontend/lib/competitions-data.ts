@@ -47,8 +47,22 @@ const DEFAULT_ABOUT = `
 <p><strong>Make sure you are using the correct link and credentials to avoid any access issues.</strong></p>
 `;
 
-/** Demo catalog aligned with FundingPips monthly competitions. */
-export const COMPETITIONS: Competition[] = [
+const CORE: Competition[] = [
+  {
+    id: 'oct-2026-upcoming',
+    title: 'October 2026 Monthly Competition',
+    kind: 'Monthly Competition',
+    host: 'PropFirm',
+    platform: 'matchtrader',
+    status: 'upcoming',
+    startsAt: '2026-10-01T00:00:00.000Z',
+    endsAt: '2026-10-31T15:00:00.000Z',
+    participants: 4120,
+    entry: 'Free',
+    featured: true,
+    prizeHtml: DEFAULT_PRIZE,
+    aboutHtml: DEFAULT_ABOUT,
+  },
   {
     id: '9efe870e-0341-4b13-9011-6d8529307f96',
     title: 'September 2026 Monthly Competition',
@@ -60,7 +74,6 @@ export const COMPETITIONS: Competition[] = [
     endsAt: '2026-09-30T15:00:00.000Z',
     participants: 26726,
     entry: 'Free',
-    featured: true,
     prizeHtml: DEFAULT_PRIZE,
     aboutHtml: DEFAULT_ABOUT,
   },
@@ -135,6 +148,50 @@ export const COMPETITIONS: Competition[] = [
     aboutHtml: DEFAULT_ABOUT,
   },
 ];
+
+/** Extra historical rows so filter / virtualization / pagination can be exercised. */
+function buildArchiveFillers(): Competition[] {
+  const months = [
+    'March',
+    'February',
+    'January',
+    'December',
+    'November',
+    'October',
+    'September',
+    'August',
+    'July',
+    'June',
+    'May',
+    'April',
+  ];
+  const out: Competition[] = [];
+  let year = 2026;
+  for (let i = 0; i < 36; i++) {
+    const month = months[i % months.length];
+    if (i > 0 && i % 12 === 0) year -= 1;
+    const monthIndex = (2 - (i % 12) + 12) % 12; // rough ISO month for archive
+    const m = String(((monthIndex + 11) % 12) + 1).padStart(2, '0');
+    out.push({
+      id: `archive-${year}-${m}-${i}`,
+      title: `${month} ${year} Monthly Competition`,
+      kind: 'Monthly Competition',
+      host: 'PropFirm',
+      platform: 'matchtrader',
+      status: 'ended',
+      startsAt: `${year}-${m}-01T00:00:00.000Z`,
+      endsAt: `${year}-${m}-28T15:00:00.000Z`,
+      participants: 8000 + ((i * 997) % 42000),
+      entry: 'Free',
+      prizeHtml: DEFAULT_PRIZE,
+      aboutHtml: DEFAULT_ABOUT,
+    });
+  }
+  return out;
+}
+
+/** Demo catalog aligned with FundingPips monthly competitions (+ archive for list UX). */
+export const COMPETITIONS: Competition[] = [...CORE, ...buildArchiveFillers()];
 
 export function findCompetition(id: string) {
   return COMPETITIONS.find((c) => c.id === id);

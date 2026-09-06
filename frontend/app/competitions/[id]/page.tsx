@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { api, getSession } from '@/lib/api';
 import {
   findCompetition,
   formatCountdown,
@@ -11,14 +12,26 @@ import {
 
 export default function CompetitionDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = String(params?.id || '');
   const c = findCompetition(id);
   const [now, setNow] = useState(() => Date.now());
+  const [joined, setJoined] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    api<{ competitionIds: string[] }>('/api/competitions/joined')
+      .then((res) => setJoined((res.competitionIds || []).includes(id)))
+      .catch(() => undefined);
+  }, [id]);
 
   if (!c) {
     return (
@@ -30,6 +43,35 @@ export default function CompetitionDetailPage() {
       </div>
     );
   }
+
+  async function onJoin() {
+    setErr('');
+    setMsg('');
+    if (!getSession()) {
+      router.push(`/login?next=${encodeURIComponent(`/competitions/${id}`)}`);
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await api<{ alreadyJoined: boolean; emailSent: boolean }>(
+        `/api/competitions/${c!.id}/join`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ title: c!.title }),
+        },
+      );
+      setJoined(true);
+      if (res.alreadyJoined) setMsg('You already joined this competition.');
+      else if (res.emailSent) setMsg('Joined — confirmation email sent (check Mailpit :8026).');
+      else setMsg('Joined, but email delivery failed. Is Mailpit SMTP on :2525?');
+    } catch (ex: unknown) {
+      setErr(ex instanceof Error ? ex.message : 'Join failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const timerIso = c.status === 'upcoming' ? c.startsAt : c.endsAt;
 
   return (
     <div className="comp-page">
@@ -53,8 +95,8 @@ export default function CompetitionDetailPage() {
           <strong>{formatShortDate(c.endsAt)}</strong>
         </p>
         <p>
-          Ending in:{' '}
-          <strong>{c.status === 'ended' ? '00:00:00' : formatCountdown(c.endsAt, now)}</strong>
+          {c.status === 'upcoming' ? 'Starts in' : 'Ending in'}:{' '}
+          <strong>{c.status === 'ended' ? '00:00:00' : formatCountdown(timerIso, now)}</strong>
         </p>
         <p>
           Entry: <strong>{c.entry}</strong> · Participants:{' '}
@@ -65,7 +107,27 @@ export default function CompetitionDetailPage() {
           style={{ marginTop: '1rem' }}
           dangerouslySetInnerHTML={{ __html: c.prizeHtml }}
         />
-        <p className="meta">Demo competition — join flow is not wired yet.</p>
+
+        {c.status === 'upcoming' && (
+          <div className="comp-detail-join" style={{ marginTop: '1.25rem' }}>
+            <button
+              type="button"
+              className="comp-btn-primary"
+              disabled={joined || busy}
+              onClick={onJoin}
+            >
+              {joined ? 'Joined' : busy ? 'Joining…' : 'Join competition'}
+            </button>
+            <p className="meta">After you join we email a confirmation to your account address.</p>
+          </div>
+        )}
+
+        {msg && (
+          <p className="comp-join-toast" role="status">
+            {msg}
+          </p>
+        )}
+        {err && <p className="err">{err}</p>}
       </div>
     </div>
   );
