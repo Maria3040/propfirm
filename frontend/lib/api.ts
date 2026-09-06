@@ -4,8 +4,21 @@ import { clearUser, setUser } from '@/store/authSlice';
 /**
  * Same-origin by default (Next rewrites → Nest) so httpOnly cookies stay first-party.
  * Override with NEXT_PUBLIC_API_BASE only for direct cross-origin debugging.
+ * Never use :5080 — PropFirm API is :6080.
  */
-const API = process.env.NEXT_PUBLIC_API_BASE ?? '';
+function resolveApiBase(): string {
+  const raw = (process.env.NEXT_PUBLIC_API_BASE || '').trim();
+  if (!raw) return '';
+  if (/:5080\b/.test(raw)) {
+    console.warn(
+      `[propfirm] Ignoring NEXT_PUBLIC_API_BASE=${raw} (wrong port). Using same-origin rewrites → :6080.`,
+    );
+    return '';
+  }
+  return raw.replace(/\/$/, '');
+}
+
+const API = resolveApiBase();
 
 export type AuthSession = {
   userId: string;
