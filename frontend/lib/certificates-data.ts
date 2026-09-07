@@ -10,42 +10,23 @@ export type PayoutCertificate = {
   country: string;
 };
 
-/** Demo reward certificates for completed trading payouts. */
-export const PAYOUT_CERTIFICATES: PayoutCertificate[] = [
-  {
-    id: 'PF-CERT-2026-0842',
-    traderName: 'Alex Trader',
-    amount: 4850,
-    currency: 'USD',
-    paidAt: '2026-08-14T12:00:00.000Z',
-    accountSize: '$100,000',
-    challenge: 'Two-Step Evaluation',
-    method: 'Crypto · USDT (TRC20)',
-    country: 'US',
-  },
-  {
-    id: 'PF-CERT-2026-0711',
-    traderName: 'Alex Trader',
-    amount: 2120.5,
-    currency: 'USD',
-    paidAt: '2026-07-02T09:30:00.000Z',
-    accountSize: '$50,000',
-    challenge: 'One-Step Evaluation',
-    method: 'Rise',
-    country: 'US',
-  },
-  {
-    id: 'PF-CERT-2026-0590',
-    traderName: 'Alex Trader',
-    amount: 975,
-    currency: 'USD',
-    paidAt: '2026-05-21T16:45:00.000Z',
-    accountSize: '$25,000',
-    challenge: 'Two-Step Evaluation',
-    method: 'Bank transfer',
-    country: 'US',
-  },
-];
+type ApprovedPayoutRow = {
+  id: string;
+  amount: number | string;
+  status: string;
+  challengeId?: string | null;
+  method?: string | null;
+  rewardType?: string | null;
+  cryptoNetwork?: string | null;
+  createdAt: string;
+  decidedAt?: string | null;
+};
+
+type ChallengeLite = {
+  id: string;
+  sku?: string;
+  accountSize?: number;
+};
 
 export function formatCertAmount(amount: number, currency = 'USD') {
   return new Intl.NumberFormat(undefined, {
@@ -61,4 +42,40 @@ export function formatCertDate(iso: string) {
     month: 'long',
     day: 'numeric',
   });
+}
+
+function methodLabel(method?: string | null, network?: string | null) {
+  const m = (method || '').toLowerCase();
+  if (m === 'crypto') {
+    return network ? `Crypto · ${network}` : 'Crypto';
+  }
+  if (m === 'bank') return 'Bank transfer';
+  if (m === 'rise') return 'Rise';
+  return method || 'Payout';
+}
+
+/** Map approved payout API rows into certificate cards (no demo fixtures). */
+export function certificatesFromApprovedPayouts(
+  rows: ApprovedPayoutRow[],
+  traderName: string,
+  challenges: ChallengeLite[] = [],
+): PayoutCertificate[] {
+  const byId = new Map(challenges.map((c) => [c.id, c]));
+  return rows
+    .filter((r) => String(r.status || '').toLowerCase() === 'approved')
+    .map((r) => {
+      const ch = r.challengeId ? byId.get(r.challengeId) : undefined;
+      const size = ch?.accountSize;
+      return {
+        id: `PF-CERT-${r.id.slice(0, 8).toUpperCase()}`,
+        traderName,
+        amount: Number(r.amount) || 0,
+        currency: 'USD',
+        paidAt: r.decidedAt || r.createdAt,
+        accountSize: size ? `$${Number(size).toLocaleString()}` : '—',
+        challenge: ch?.sku || (r.challengeId ? `Account ${r.challengeId.slice(0, 8)}` : 'Funded account'),
+        method: methodLabel(r.method, r.cryptoNetwork),
+        country: '',
+      };
+    });
 }

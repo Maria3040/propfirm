@@ -4336,12 +4336,17 @@ body:has(.cfg-page) .main {
 }
 
 @media (min-width: 768px) {
+  /* Banner sits in the content column so it abuts the sidebar with no gap. */
+  .app-banner {
+    margin-inline-start: var(--app-sidebar-width);
+  }
+
   .app-sidebar {
     position: fixed;
-    top: var(--app-banner-height);
+    top: 0;
     bottom: 0;
     inset-inline-start: 0;
-    z-index: 20;
+    z-index: 40;
     display: flex;
     width: var(--app-sidebar-width);
     flex-direction: column;
@@ -8711,6 +8716,12 @@ html[data-theme='dark'] .chat-bubble-bot {
   margin: 0;
   font-size: clamp(1.35rem, 3vw, 1.875rem);
   font-weight: 500;
+}
+
+.ec-heading .ec-source {
+  margin: 0.55rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--muted, #64748b);
 }
 
 .ec-panel {

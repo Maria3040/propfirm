@@ -1,13 +1,31 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { api, getSession } from '@/lib/api';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 import {
-  PAYOUT_CERTIFICATES,
+  certificatesFromApprovedPayouts,
   formatCertAmount,
   formatCertDate,
   type PayoutCertificate,
 } from '@/lib/certificates-data';
+
+type PayoutPage = {
+  items: Array<{
+    id: string;
+    amount: number | string;
+    status: string;
+    challengeId?: string | null;
+    method?: string | null;
+    rewardType?: string | null;
+    cryptoNetwork?: string | null;
+    createdAt: string;
+    decidedAt?: string | null;
+  }>;
+};
+
+type ChallengeRow = { id: string; sku?: string; accountSize?: number };
 
 function Seal() {
   return (
@@ -116,25 +134,59 @@ function CertificateTemplate({ cert, traderName }: { cert: PayoutCertificate; tr
 }
 
 export default function CertificatesPage() {
-  const [name, setName] = useState('Alex Trader');
-  const [selectedId, setSelectedId] = useState(PAYOUT_CERTIFICATES[0]?.id || '');
+  const { ready, authenticated } = useRequireAuth('/certificates');
+  const [name, setName] = useState('Trader');
+  const [certs, setCerts] = useState<PayoutCertificate[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
 
   useEffect(() => {
-    const session = getSession();
-    api<{ displayName?: string }>('/api/users/me')
-      .then((me) => {
-        const n = me?.displayName || session?.displayName;
-        if (n) setName(n);
-      })
-      .catch(() => {
-        if (session?.displayName) setName(session.displayName);
-      });
-  }, []);
+    if (!authenticated) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setErr('');
+      try {
+        const session = getSession();
+        const [me, payouts, challenges] = await Promise.all([
+          api<{ displayName?: string }>('/api/users/me'),
+          api<PayoutPage>('/api/payouts?status=Approved&page=1&pageSize=50&sortBy=createdAt&sortDir=desc'),
+          api<ChallengeRow[]>('/api/challenges').catch(() => [] as ChallengeRow[]),
+        ]);
+        if (cancelled) return;
+        const traderName = me?.displayName || session?.displayName || 'Trader';
+        setName(traderName);
+        const next = certificatesFromApprovedPayouts(
+          Array.isArray(payouts.items) ? payouts.items : [],
+          traderName,
+          Array.isArray(challenges) ? challenges : [],
+        );
+        setCerts(next);
+        setSelectedId(next[0]?.id || '');
+      } catch (ex: unknown) {
+        if (!cancelled) setErr(ex instanceof Error ? ex.message : 'Failed to load certificates');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated]);
 
   const selected = useMemo(
-    () => PAYOUT_CERTIFICATES.find((c) => c.id === selectedId) || PAYOUT_CERTIFICATES[0],
-    [selectedId],
+    () => certs.find((c) => c.id === selectedId) || certs[0],
+    [certs, selectedId],
   );
+
+  if (!ready || !authenticated) {
+    return (
+      <div className="cert-page">
+        <p className="meta">Checking session…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="cert-page">
@@ -143,15 +195,27 @@ export default function CertificatesPage() {
         <p>Official proof of trading payouts issued for your funded accounts.</p>
       </header>
 
-      {PAYOUT_CERTIFICATES.length === 0 || !selected ? (
+      {err ? (
+        <p className="err" role="alert">
+          {err}
+        </p>
+      ) : null}
+      {loading ? <p className="meta">Loading certificates…</p> : null}
+
+      {!loading && !err && certs.length === 0 ? (
         <div className="cert-empty">
           <h2>No certificates yet</h2>
-          <p>You&apos;ll earn a reward certificate once a payout is approved.</p>
+          <p>You&apos;ll earn a reward certificate once a payout is approved by admin.</p>
+          <Link href="/payouts" className="cert-btn" style={{ display: 'inline-block', marginTop: '1rem', textDecoration: 'none' }}>
+            View rewards
+          </Link>
         </div>
-      ) : (
+      ) : null}
+
+      {!loading && selected ? (
         <div className="cert-layout">
           <aside className="cert-list" aria-label="Your certificates">
-            {PAYOUT_CERTIFICATES.map((c) => (
+            {certs.map((c) => (
               <CertificateCard
                 key={c.id}
                 cert={c}
@@ -164,17 +228,13 @@ export default function CertificatesPage() {
           <div className="cert-preview">
             <CertificateTemplate cert={selected} traderName={name} />
             <div className="cert-actions">
-              <button
-                type="button"
-                className="cert-btn"
-                onClick={() => window.print()}
-              >
+              <button type="button" className="cert-btn" onClick={() => window.print()}>
                 Print / Save PDF
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
