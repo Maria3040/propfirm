@@ -21,3 +21,10 @@ __pycache__/
 .pytest_cache/
 .venv/
 backend-python/.venv/
+
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
