@@ -6,8 +6,9 @@ import { api } from '@/lib/api';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import { useAdminList } from '@/hooks/useAdminList';
 import { AdminPager, AdminTableToolbar, SortTh } from '@/components/admin/AdminTableToolbar';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
-type Tab = 'overview' | 'payouts' | 'traders' | 'challenges' | 'catalog' | 'audit' | 'mail';
+type Tab = 'overview' | 'payouts' | 'verifications' | 'traders' | 'challenges' | 'catalog' | 'audit' | 'mail';
 
 type Overview = {
   traders: number;
@@ -21,7 +22,7 @@ type Overview = {
   generatedAt?: string;
 };
 
-const TABS: Tab[] = ['overview', 'payouts', 'traders', 'challenges', 'catalog', 'audit', 'mail'];
+const TABS: Tab[] = ['overview', 'payouts', 'verifications', 'traders', 'challenges', 'catalog', 'audit', 'mail'];
 
 function isTab(v: string | null): v is Tab {
   return !!v && (TABS as string[]).includes(v);
@@ -45,6 +46,10 @@ function AdminPageInner() {
   const [commentSubject, setCommentSubject] = useState('Regarding your payout request');
   const [commentMessage, setCommentMessage] = useState('');
   const [commentFlash, setCommentFlash] = useState('');
+  const [closeId, setCloseId] = useState<string | null>(null);
+  const [verifications, setVerifications] = useState<any[]>([]);
+  const [verifyBusy, setVerifyBusy] = useState('');
+  const [verifyComment, setVerifyComment] = useState('');
 
   const traders = useAdminList<any>({
     path: '/api/admin/traders',
@@ -125,18 +130,68 @@ function AdminPageInner() {
     }
   }, [isAdmin]);
 
+  const loadVerifications = useCallback(async () => {
+    if (!isAdmin) return;
+    setErr('');
+    try {
+      const res = await api<{ items: any[] }>('/api/admin/verifications');
+      setVerifications(Array.isArray(res.items) ? res.items : []);
+    } catch (e: any) {
+      setErr(e.message || 'Failed to load verifications');
+    }
+  }, [isAdmin]);
+
   useEffect(() => {
     if (tab === 'overview') void loadOverview();
-  }, [tab, loadOverview]);
+    if (tab === 'verifications') void loadVerifications();
+  }, [tab, loadOverview, loadVerifications]);
 
   async function refreshActive() {
     if (tab === 'overview') await loadOverview();
+    else if (tab === 'verifications') await loadVerifications();
     else if (tab === 'traders') await traders.reload();
     else if (tab === 'challenges') await challenges.reload();
     else if (tab === 'payouts') await payouts.reload();
     else if (tab === 'catalog') await products.reload();
     else if (tab === 'audit') await audit.reload();
     else if (tab === 'mail') await mail.reload();
+  }
+
+  async function decideVerification(traderId: string, approve: boolean) {
+    setVerifyBusy(traderId);
+    setErr('');
+    try {
+      await api(`/api/admin/verifications/${traderId}/${approve ? 'approve' : 'reject'}`, {
+        method: 'POST',
+        body: JSON.stringify({ comment: verifyComment || undefined }),
+      });
+      setVerifyComment('');
+      await loadVerifications();
+    } catch (e: any) {
+      setErr(e.message || 'Verification decision failed');
+    } finally {
+      setVerifyBusy('');
+    }
+  }
+
+  async function commentVerification(traderId: string, email: string) {
+    setVerifyBusy(traderId);
+    setErr('');
+    try {
+      await api(`/api/admin/verifications/${traderId}/comment`, {
+        method: 'POST',
+        body: JSON.stringify({
+          subject: `Regarding your identity verification`,
+          message: verifyComment || 'Please provide clearer ID documentation.',
+        }),
+      });
+      setCommentFlash(`Email sent to ${email}`);
+      setVerifyComment('');
+    } catch (e: any) {
+      setErr(e.message || 'Comment failed');
+    } finally {
+      setVerifyBusy('');
+    }
   }
 
   async function decidePayout(id: string, approve: boolean) {
@@ -201,22 +256,27 @@ function AdminPageInner() {
       setCommentMessage('');
       if (tab === 'mail') await mail.reload();
     } catch (e: any) {
-      setErr(
-        e.message === 'Not Found'
-          ? 'Comment API not found — restart the Python API on :6080, then try again.'
-          : e.message || 'comment email failed',
-      );
+        setErr(
+          e.message === 'Not Found' || /not found/i.test(String(e.message))
+            ? e.message || 'API not found — restart the .NET API on :6080, then try again.'
+            : e.message || 'comment email failed',
+        );
     } finally {
       setBusy(false);
     }
   }
 
   async function closeChallenge(id: string) {
-    if (!window.confirm('Force-close this challenge and lock the trading account?')) return;
+    setCloseId(id);
+  }
+
+  async function confirmCloseChallenge() {
+    if (!closeId) return;
     setBusy(true);
     setErr('');
     try {
-      await api(`/api/admin/challenges/${id}/close`, { method: 'POST' });
+      await api(`/api/admin/challenges/${closeId}/close`, { method: 'POST' });
+      setCloseId(null);
       await challenges.reload();
     } catch (e: any) {
       setErr(e.message || 'close failed');
@@ -250,9 +310,10 @@ function AdminPageInner() {
     );
   }
 
-  const tabs: { id: Tab; label: string }[] = [
+      const tabs: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'payouts', label: 'Payouts' },
+    { id: 'verifications', label: 'Verifications' },
     { id: 'traders', label: 'Traders' },
     { id: 'challenges', label: 'Challenges' },
     { id: 'catalog', label: 'Catalog' },
@@ -264,6 +325,16 @@ function AdminPageInner() {
 
   return (
     <div className="admin-panel">
+      <ConfirmDialog
+        open={!!closeId}
+        title="Force-close this challenge?"
+        description="The trading account will be locked and the challenge marked Closed."
+        confirmLabel={busy ? 'Closing…' : 'Close challenge'}
+        danger
+        busy={busy}
+        onCancel={() => !busy && setCloseId(null)}
+        onConfirm={() => void confirmCloseChallenge()}
+      />
       <header className="admin-panel-head">
         <div>
           <h1>Admin panel</h1>
@@ -272,13 +343,17 @@ function AdminPageInner() {
             search, filters, sort, and pagination.
           </p>
         </div>
-        <button type="button" className="btn" onClick={() => void refreshActive()} disabled={busy}>
-          Refresh
+        <button type="button" className="btn" onClick={() => void refreshActive()} disabled={busy} aria-busy={busy}>
+          {busy ? 'Working…' : 'Refresh'}
         </button>
       </header>
 
-      {err && <p className="err">{err}</p>}
-      {commentFlash && <p className="meta">{commentFlash}</p>}
+      {err ? (
+        <p className="err" role="alert">
+          {err}
+        </p>
+      ) : null}
+      {commentFlash ? <p className="settings-saved">{commentFlash}</p> : null}
 
       <div className="admin-tabs" role="tablist" aria-label="Admin sections">
         {tabs.map((t) => (
@@ -441,6 +516,7 @@ function AdminPageInner() {
                       type="button"
                       className="btn"
                       disabled={approveDisabled}
+                      aria-busy={busy}
                       title={
                         !actionable
                           ? 'Already decided'
@@ -448,16 +524,17 @@ function AdminPageInner() {
                       }
                       onClick={() => void decidePayout(p.id, true)}
                     >
-                      Approve &amp; send
+                      {busy ? 'Approving…' : 'Approve & send'}
                     </button>
                     <button
                       type="button"
                       className="btn danger"
                       disabled={rejectDisabled}
+                      aria-busy={busy}
                       title={!actionable ? 'Already decided' : 'Reject payout'}
                       onClick={() => void decidePayout(p.id, false)}
                     >
-                      Reject
+                      {busy ? 'Rejecting…' : 'Reject'}
                     </button>
                   </div>
                 </div>
@@ -473,6 +550,75 @@ function AdminPageInner() {
             onPageSizeChange={payouts.setPageSize}
             loading={payouts.loading}
           />
+        </section>
+      )}
+
+      {tab === 'verifications' && (
+        <section>
+          <h2>Identity verifications</h2>
+          <p className="meta">Approve / reject pending KYC requests. Traders get an email via Mailpit.</p>
+          <label className="settings-field" style={{ maxWidth: 480, marginBottom: '1rem' }}>
+            Comment (optional for decide · required-ish for email)
+            <textarea
+              className="settings-input"
+              rows={3}
+              value={verifyComment}
+              onChange={(e) => setVerifyComment(e.target.value)}
+              placeholder="Optional note to the trader…"
+            />
+          </label>
+          {commentFlash ? <p className="settings-saved">{commentFlash}</p> : null}
+          {verifications.length === 0 ? (
+            <p className="meta">No verification requests yet.</p>
+          ) : (
+            <div className="admin-card-list">
+              {verifications.map((v) => (
+                <div key={v.traderId} className="admin-card-row">
+                  <div>
+                    <strong>{v.displayName || v.email}</strong>
+                    <div className="meta">
+                      {v.email} · {v.status}
+                      {v.requestedAt ? ` · requested ${new Date(v.requestedAt).toLocaleString()}` : ''}
+                    </div>
+                    {v.adminComment ? <p className="meta">Last comment: {v.adminComment}</p> : null}
+                  </div>
+                  <div className="admin-actions" style={{ flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={!!verifyBusy}
+                      aria-busy={verifyBusy === v.traderId}
+                      onClick={() => void commentVerification(v.traderId, v.email)}
+                    >
+                      {verifyBusy === v.traderId ? 'Sending…' : 'Email comment'}
+                    </button>
+                    {v.status === 'Pending' ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={verifyBusy === v.traderId}
+                          aria-busy={verifyBusy === v.traderId}
+                          onClick={() => void decideVerification(v.traderId, true)}
+                        >
+                          {verifyBusy === v.traderId ? 'Saving…' : 'Approve'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn danger"
+                          disabled={verifyBusy === v.traderId}
+                          aria-busy={verifyBusy === v.traderId}
+                          onClick={() => void decideVerification(v.traderId, false)}
+                        >
+                          {verifyBusy === v.traderId ? 'Saving…' : 'Reject'}
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -588,8 +734,14 @@ function AdminPageInner() {
                   </div>
                 </div>
                 {c.status !== 'Closed' && c.status !== 'Failed' && (
-                  <button type="button" className="btn danger" disabled={busy} onClick={() => void closeChallenge(c.id)}>
-                    Force close
+                  <button
+                    type="button"
+                    className="btn danger"
+                    disabled={busy}
+                    aria-busy={busy && closeId === c.id}
+                    onClick={() => void closeChallenge(c.id)}
+                  >
+                    {busy && closeId === c.id ? 'Closing…' : 'Force close'}
                   </button>
                 )}
               </div>
@@ -655,8 +807,14 @@ function AdminPageInner() {
                     <td>${Number(p.price).toFixed(2)}</td>
                     <td>{p.profitSplitPct}%</td>
                     <td>
-                      <button type="button" className="btn" disabled={busy} onClick={() => void toggleProduct(p.id, !p.isActive)}>
-                        {p.isActive ? 'Deactivate' : 'Activate'}
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={busy}
+                        aria-busy={busy}
+                        onClick={() => void toggleProduct(p.id, !p.isActive)}
+                      >
+                        {busy ? 'Saving…' : p.isActive ? 'Deactivate' : 'Activate'}
                       </button>
                     </td>
                   </tr>

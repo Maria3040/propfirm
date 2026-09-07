@@ -10,6 +10,7 @@ import type { RootState } from '@/store';
 const ADMIN_NAV = [
   { tab: 'overview', label: 'Overview' },
   { tab: 'payouts', label: 'Payouts' },
+  { tab: 'verifications', label: 'Verifications' },
   { tab: 'traders', label: 'Traders' },
   { tab: 'challenges', label: 'Challenges' },
   { tab: 'catalog', label: 'Catalog' },
