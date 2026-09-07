@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PropFirm.Api/PropFirm.Api.csproj" />
+    <Project Path="src/PropFirm.Application/PropFirm.Application.csproj" />
+    <Project Path="src/PropFirm.Domain/PropFirm.Domain.csproj" />
+    <Project Path="src/PropFirm.Infrastructure/PropFirm.Infrastructure.csproj" />
+    <Project Path="src/PropFirm.SharedKernel/PropFirm.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PropFirm.E2ETests/PropFirm.E2ETests.csproj" />
+    <Project Path="tests/PropFirm.IntegrationTests/PropFirm.IntegrationTests.csproj" />
+    <Project Path="tests/PropFirm.UnitTests/PropFirm.UnitTests.csproj" />
+  </Folder>
+</Solution>
