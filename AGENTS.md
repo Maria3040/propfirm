@@ -25,5 +25,10 @@
   - Architecture README: `backend-dotnet/README.md`
   - Tests: unit + integration + e2e journeys (`dotnet test`)
   - Same ports / cookie JWT / Next rewrite contract
-- Ports: API 6080 · UI 3100 · Postgres 15433 · Redis 6380 · Mailpit 8026 / SMTP 2525
+- **Angular 21 LTS frontend track** (additive; does not replace React `frontend/`):
+  - Branch: `feat/frontend-angular21-lts_backend-dotnet8-aspnetcore`
+  - UI: `frontend-angular/` — Angular 21 standalone + signals · `npm start` → **:3200**
+  - Proxy `/api` → API `:6080` (`proxy.conf.json`); CORS includes `localhost:3200`
+  - README: `frontend-angular/README.md`
+- Ports: API 6080 · UI (Next) 3100 · UI (Angular) 3200 · Postgres 15433 · Redis 6380 · Mailpit 8026 / SMTP 2525
 - DDD modular monolith: schema-per-BC (or module folders), domain ≠ persistence
