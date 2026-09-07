@@ -1,25 +1,26 @@
 # PropFirm — FundingPips-style evaluation platform
 
-Modular monolith with **DDD**. Active Python track: **FastAPI + SQLAlchemy + Postgres + Redis** (`backend-python/`), Next.js + React frontend. Nest/Go remain as references.
+Modular monolith with **DDD**. Active track on this branch: **ASP.NET Core + EF Core + Postgres** (`backend-dotnet/`), Next.js + React frontend. Python/Nest/Go remain as references on other branches.
 
-**Branches:** `master` = Nest REST + localStorage JWT · GraphQL Apollo · Redux httpOnly Nest · Go modular monolith · **Python** = `feat/backend-python-fastapi-sqlalchemy-postgres-redis_frontend-nextjs-redux`.
+**Branch:** `feat/backend-dotnet8-aspnetcore-efcore-postgres-modular-monolith_frontend-nextjs-redux` · DDD patterns from book **ch07**.
 
 | Doc | Purpose |
 |-----|---------|
 | [docs/USER-STORIES.md](docs/USER-STORIES.md) | Epics & acceptance criteria |
 | [docs/BOUNDED-CONTEXTS.md](docs/BOUNDED-CONTEXTS.md) | BC map from stories |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical overview |
-| [backend-python/README.md](backend-python/README.md) | **Python DDD / Clean Architecture** modular monolith + Redis + admin |
+| [backend-dotnet/README.md](backend-dotnet/README.md) | **ASP.NET Core DDD modular monolith** (ch07 Entity/UoW) + EF Core + tests |
+| [backend-python/README.md](backend-python/README.md) | Python DDD modular monolith (other branch) |
 | [docs/diagrams/](docs/diagrams/) | **UML (PlantUML)** + **BPMN** for [bpmn.io](https://demo.bpmn.io) |
 
 ## Stack
 
 | Side | Technology |
 |------|------------|
-| Backend | **Python FastAPI** (`backend-python/`) · SQLAlchemy 2 · PostgreSQL · Redis (cache / rate-limit / JWT denylist) · Nest/Go references |
-| Frontend | Next.js App Router · React · Redux · REST via same-origin rewrites — **no ORM** |
+| Backend | **ASP.NET Core** (`backend-dotnet/`) · EF Core · PostgreSQL · ch07-style DDD |
+| Frontend | Next.js App Router · React · Redux · REST via same-origin rewrites |
 | Infra | Docker Compose (Postgres, Redis, Mailpit) |
-| Tests | pytest unit + integration · Frontend Vitest + Playwright |
+| Tests | `dotnet test` unit + integration + e2e · Frontend Vitest + Playwright |
 
 ## Quick start
 
@@ -31,14 +32,22 @@ powershell -ExecutionPolicy Bypass -File .\start-propfirm.ps1
 
 | Service | URL |
 |---------|-----|
-| UI | http://localhost:3100 (use **localhost**, not `127.0.0.1`, unless CORS includes both) |
-| API | http://localhost:6080 |
+| UI (trader) | http://localhost:3100 (use **localhost**, not `127.0.0.1`, unless CORS includes both) |
+| **Admin panel** | http://localhost:3100/admin |
+| API | http://localhost:6080 · Swagger http://localhost:6080/swagger |
 | Mailpit | http://localhost:8026 |
 | Postgres | localhost:15433 (`propfirm` / `propfirm_dev`) |
 | Redis | localhost:6380 (architecture layer — see `backend-python/README.md`) |
 | SMTP | localhost:2525 |
 
-**Demo logins:** `trader@propfirm.local` / `Trader1!` · `admin@propfirm.local` / `Admin1!`
+### Demo credentials
+
+| Role | Email | Password | Where to use |
+|------|-------|----------|--------------|
+| **Trader** (test) | `trader@propfirm.local` | `Trader1!` | http://localhost:3100/login → Accounts, Competitions, Payouts |
+| **Admin** | `admin@propfirm.local` | `Admin1!` | http://localhost:3100/admin → traders, payouts, catalog, audit |
+
+Trader JWT calling `/api/admin/*` → **403**. Admin can approve payouts and browse overview KPIs.
 
 ## Diagrams (UML + BPMN)
 
@@ -135,4 +144,4 @@ cd frontend; npx playwright install chromium; npm run test:e2e
 
 ## Happy path
 
-Register/login → browse catalog → checkout → confirm mock pay → simulate trades → pass or breach → (funded) request payout → admin approve. Open Mailpit for emails; Security settings for login history (VPN/VPS/residential).
+Register/login as **trader** → browse catalog → checkout → confirm mock pay → simulate trades → pass or breach → (funded) request payout → **admin** approve at http://localhost:3100/admin. Join an upcoming competition (e.g. `/competitions/oct-2026-upcoming`) to appear on the pre-start joined-traders table. Open Mailpit for emails; Security settings for login history (VPN/VPS/residential).

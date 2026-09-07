@@ -12,12 +12,18 @@
 - **Go modular monolith track**:
   - Branch: `feat/backend-golang-modular-monolith_frontend-nextjs-redux`
   - API: `backend-go/` (chi + pgx + schema-per-BC + in-process bus + domain tests)
-- **Python track** (this branch when checked out):
+- **Python track**:
   - Branch: `feat/backend-python-fastapi-sqlalchemy-postgres-redis_frontend-nextjs-redux`
   - API: `backend-python/` — **DDD + Clean Architecture modular monolith** (FastAPI + SQLAlchemy + Redis)
   - Architecture README: `backend-python/README.md`
   - Admin panel: UI `/admin` · APIs under `/api/admin/*`
   - Nest/Go remain as references (not started by `start-propfirm.ps1`)
   - Same cookie JWT contract; Next rewrites `/api/*` → `:6080`
+- **ASP.NET Core modular monolith track** (this branch when checked out):
+  - Branch: `feat/backend-dotnet8-aspnetcore-efcore-postgres-modular-monolith_frontend-nextjs-redux`
+  - API: `backend-dotnet/` — **ch07-style DDD** (Entity&lt;T&gt;, UoW) + EF Core + Postgres Minimal APIs
+  - Architecture README: `backend-dotnet/README.md`
+  - Tests: unit + integration + e2e journeys (`dotnet test`)
+  - Same ports / cookie JWT / Next rewrite contract
 - Ports: API 6080 · UI 3100 · Postgres 15433 · Redis 6380 · Mailpit 8026 / SMTP 2525
-- DDD modular monolith: schema-per-BC, in-process bus, domain ≠ persistence
+- DDD modular monolith: schema-per-BC (or module folders), domain ≠ persistence
