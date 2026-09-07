@@ -37,7 +37,7 @@ public sealed class HistoryQueries(IConfiguration config)
         if (!string.IsNullOrWhiteSpace(status))
             where += @" AND o.""Status"" ILIKE @status";
         if (!string.IsNullOrWhiteSpace(q))
-            where += @" AND (o.""Sku"" ILIKE @q OR o.""Id"" ILIKE @q OR COALESCE(o.""PaymentIntentId"",'') ILIKE @q)";
+            where += @" AND (o.""Sku"" ILIKE @q OR o.""Id"" ILIKE @q OR COALESCE(o.""PaymentIntentId"",'') ILIKE @q OR COALESCE(o.""CouponCode"",'') ILIKE @q)";
 
         var total = await conn.ExecuteScalarAsync<int>(
             $@"SELECT COUNT(*)::int FROM propfirm.orders o {where}",
@@ -46,7 +46,8 @@ public sealed class HistoryQueries(IConfiguration config)
         var rows = (await conn.QueryAsync<PaymentRow>(
             $@"SELECT o.""Id"" AS Id, o.""Sku"" AS Sku, o.""Price"" AS Price, o.""Status"" AS Status,
                       o.""PaymentIntentId"" AS PaymentIntentId, o.""CreatedAt"" AS CreatedAt, o.""PaidAt"" AS PaidAt,
-                      o.""AccountSize"" AS AccountSize, o.""Platform"" AS Platform
+                      o.""AccountSize"" AS AccountSize, o.""Platform"" AS Platform,
+                      o.""ListPrice"" AS ListPrice, o.""CouponCode"" AS CouponCode, o.""DiscountAmount"" AS DiscountAmount
                FROM propfirm.orders o
                {where}
                ORDER BY {orderCol} {dir}
@@ -164,6 +165,9 @@ public sealed class HistoryQueries(IConfiguration config)
         public DateTimeOffset? PaidAt { get; set; }
         public decimal AccountSize { get; set; }
         public string? Platform { get; set; }
+        public decimal? ListPrice { get; set; }
+        public string? CouponCode { get; set; }
+        public decimal? DiscountAmount { get; set; }
     }
 
     public sealed class PayoutRow

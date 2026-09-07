@@ -440,11 +440,17 @@ public sealed class PropFirmAppService(
     {
         var product = await db.Products.FindAsync(productId) ?? throw new DomainError("product not found");
         if (!product.IsActive) throw new DomainError("product inactive");
-        var (total, plat) = Pricing.PriceOrder(product.Price, addonSwapFree, platform, quantity);
+        var (listTotal, plat) = Pricing.PriceOrder(product.Price, addonSwapFree, platform, quantity);
+        var total = listTotal;
+        decimal discountAmount = 0m;
+        string? normalizedCoupon = null;
         if (!string.IsNullOrWhiteSpace(couponCode))
         {
             var coupon = Pricing.LookupCoupon(couponCode) ?? throw new DomainError("coupon not found");
-            total = Pricing.ApplyCoupon(coupon, total).FinalTotal;
+            var quote = Pricing.ApplyCoupon(coupon, listTotal);
+            total = quote.FinalTotal;
+            discountAmount = quote.DiscountAmount;
+            normalizedCoupon = quote.Code;
         }
 
         var order = new Order
@@ -453,6 +459,9 @@ public sealed class PropFirmAppService(
             ProductId = product.Id,
             Sku = product.Sku,
             Price = total,
+            ListPrice = listTotal,
+            CouponCode = normalizedCoupon,
+            DiscountAmount = discountAmount > 0 ? discountAmount : null,
             AccountSize = product.AccountSize,
             Phases = product.Phases,
             ProfitTargetPct = product.ProfitTargetPct,
@@ -469,7 +478,16 @@ public sealed class PropFirmAppService(
         };
         db.Orders.Add(order);
         await db.SaveChangesAsync();
-        return new { orderId = order.Id, status = order.Status, price = order.Price, paymentIntentId = order.PaymentIntentId };
+        return new
+        {
+            orderId = order.Id,
+            status = order.Status,
+            price = order.Price,
+            listPrice = order.ListPrice,
+            discountAmount = order.DiscountAmount ?? 0m,
+            couponCode = order.CouponCode,
+            paymentIntentId = order.PaymentIntentId,
+        };
     }
 
     public async Task<object> EligiblePayoutsAsync(string traderId)
@@ -602,7 +620,7 @@ public sealed class PropFirmAppService(
         if (trader is not null)
         {
             var login = acc?.Login ?? c.Id[..8];
-            var undoUrl = $"http://localhost:3100/accounts/restore?token={c.ArchiveUndoToken}";
+            var undoUrl = $"http://localhost:3200/accounts/restore?token={c.ArchiveUndoToken}";
             await mail.NotifyAsync(db, trader.Email, $"Account archived — #{login}",
                 $"Your PropFirm account #{login} ({c.Sku}) was archived and trading is disabled.\n\n" +
                 $"To undo this within a few days, open:\n{undoUrl}\n\n" +
@@ -713,6 +731,7 @@ public sealed class PropFirmAppService(
             c.MinTradingDays,
             c.MaxTradingDays));
 
+        string? nextChallengeId = null;
         if (risk.Kind == "breach")
         {
             c.Status = ChallengeStatuses.Failed;
@@ -730,8 +749,9 @@ public sealed class PropFirmAppService(
             if (c.CurrentPhase >= c.Phases)
             {
                 // Keep passed phase account; provision a separate Funded account.
-                var funded = await ProvisionContinuationAsync(c, Math.Max(1, c.Phases), ChallengeStatuses.Funded);
-                var fundedAcc = await db.TradingAccounts.FirstAsync(a => a.ChallengeId == funded.Id);
+                // Use the in-memory TradingAccount — FirstAsync would miss unsaved rows.
+                var (funded, fundedAcc) = await ProvisionContinuationAsync(c, Math.Max(1, c.Phases), ChallengeStatuses.Funded);
+                nextChallengeId = funded.Id;
                 var wallet = await db.Wallets.FindAsync(c.TraderId);
                 if (wallet is not null)
                 {
@@ -751,8 +771,8 @@ public sealed class PropFirmAppService(
             {
                 var passedPhase = c.CurrentPhase;
                 var nextPhase = ChallengeProgression.NextPhase(c.CurrentPhase, c.Phases);
-                var next = await ProvisionContinuationAsync(c, nextPhase, ChallengeStatuses.Active);
-                var nextAcc = await db.TradingAccounts.FirstAsync(a => a.ChallengeId == next.Id);
+                var (next, nextAcc) = await ProvisionContinuationAsync(c, nextPhase, ChallengeStatuses.Active);
+                nextChallengeId = next.Id;
                 var trader = await db.Traders.FindAsync(c.TraderId);
                 if (trader is not null)
                 {
@@ -778,14 +798,17 @@ public sealed class PropFirmAppService(
             risk = new { risk.Kind, risk.Rule, risk.Reason },
             tradingDays,
             dayPnl,
+            nextChallengeId,
         };
     }
 
     /// <summary>
     /// Marks the finished phase account as Passed and provisions a new challenge + trading account
     /// for the next phase (or Funded). Each phase is its own accounts-list row.
+    /// Returns the new entities from the change tracker (not yet saved).
     /// </summary>
-    private async Task<Challenge> ProvisionContinuationAsync(Challenge from, int phase, string status)
+    private async Task<(Challenge Challenge, TradingAccount Account)> ProvisionContinuationAsync(
+        Challenge from, int phase, string status)
     {
         var oldAcc = await db.TradingAccounts.FirstOrDefaultAsync(a => a.ChallengeId == from.Id);
         if (oldAcc is not null) oldAcc.Locked = true;
@@ -820,7 +843,7 @@ public sealed class PropFirmAppService(
 
         var login = $"mt{Random.Shared.Next(1000000, 9999999)}";
         var password = $"Pf{Random.Shared.Next(100000, 999999)}!";
-        db.TradingAccounts.Add(new TradingAccount
+        var nextAcc = new TradingAccount
         {
             ChallengeId = next.Id,
             TraderId = from.TraderId,
@@ -832,8 +855,9 @@ public sealed class PropFirmAppService(
             Equity = from.AccountSize,
             HighWaterMark = from.AccountSize,
             Locked = false,
-        });
-        return next;
+        };
+        db.TradingAccounts.Add(nextAcc);
+        return (next, nextAcc);
     }
 
     async Task<Challenge?> FindChallengeAsync(string idOrLogin)

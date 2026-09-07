@@ -84,6 +84,9 @@ public static class SeedData
             ALTER TABLE propfirm.trading_accounts ADD COLUMN IF NOT EXISTS "Server" character varying(128) NOT NULL DEFAULT 'PropFirm-Demo';
             ALTER TABLE propfirm.challenge_products ADD COLUMN IF NOT EXISTS "MaxTradingDays" integer NOT NULL DEFAULT 0;
             ALTER TABLE propfirm.orders ADD COLUMN IF NOT EXISTS "MaxTradingDays" integer NOT NULL DEFAULT 0;
+            ALTER TABLE propfirm.orders ADD COLUMN IF NOT EXISTS "ListPrice" numeric NULL;
+            ALTER TABLE propfirm.orders ADD COLUMN IF NOT EXISTS "CouponCode" character varying(64) NULL;
+            ALTER TABLE propfirm.orders ADD COLUMN IF NOT EXISTS "DiscountAmount" numeric NULL;
             ALTER TABLE propfirm.challenge_instances ADD COLUMN IF NOT EXISTS "MaxTradingDays" integer NOT NULL DEFAULT 0;
             ALTER TABLE propfirm.challenge_instances ADD COLUMN IF NOT EXISTS "PreviousStatus" text NULL;
             ALTER TABLE propfirm.challenge_instances ADD COLUMN IF NOT EXISTS "ArchiveUndoToken" text NULL;
@@ -530,6 +533,22 @@ public static class SeedData
             ("comp.farah@propfirm.local", "Farah S", "compOctFarah"),
             ("comp.gio@propfirm.local", "Gio P", "compOctGio"),
             ("comp.hana@propfirm.local", "Hana T", "compOctHana"),
+            ("comp.ivan@propfirm.local", "Ivan P", "compOctIvan"),
+            ("comp.jade@propfirm.local", "Jade W", "compOctJade"),
+            ("comp.kai@propfirm.local", "Kai M", "compOctKai"),
+            ("comp.lena@propfirm.local", "Lena O", "compOctLena"),
+            ("comp.marco@propfirm.local", "Marco V", "compOctMarco"),
+            ("comp.nina@propfirm.local", "Nina B", "compOctNina"),
+            ("comp.omar@propfirm.local", "Omar H", "compOctOmar"),
+            ("comp.priya@propfirm.local", "Priya S", "compOctPriya"),
+            ("comp.quinn@propfirm.local", "Quinn A", "compOctQuinn"),
+            ("comp.rita@propfirm.local", "Rita C", "compOctRita"),
+            ("comp.sam@propfirm.local", "Sam D", "compOctSam"),
+            ("comp.tina@propfirm.local", "Tina E", "compOctTina"),
+            ("comp.uma@propfirm.local", "Uma F", "compOctUma"),
+            ("comp.vik@propfirm.local", "Vik G", "compOctVik"),
+            ("comp.wren@propfirm.local", "Wren J", "compOctWren"),
+            ("comp.yara@propfirm.local", "Yara Z", "compOctYara"),
         };
 
         foreach (var (email, name, login) in roster)

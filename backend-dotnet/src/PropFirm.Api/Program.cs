@@ -551,7 +551,12 @@ public partial class Program { }
 public record RegisterBody(string Email, string Password, string? DisplayName);
 public record LoginBody(string Email, string Password, string? ClientIp);
 public record CouponBody(string Code, decimal Subtotal);
-public record OrderBody(string ProductId, bool AddonSwapFree, string? Platform, int Quantity, string? CouponCode);
+public record OrderBody(
+    string ProductId,
+    bool AddonSwapFree,
+    string? Platform,
+    int Quantity,
+    string? CouponCode = null);
 public record TradeBody(string? Symbol, string? Side, decimal Lots, decimal Pnl, string? TradeDay);
 public record RestoreBody(string? Token);
 public record PayoutBody(decimal Amount, string ChallengeId, string? Method, string? CryptoNetwork, string? CryptoAddress);

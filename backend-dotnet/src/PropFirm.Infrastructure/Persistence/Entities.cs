@@ -81,6 +81,10 @@ public class Order : Entity<string>
     public string Platform { get; set; } = "mt5";
     public string Status { get; set; } = "Pending";
     public string? PaymentIntentId { get; set; }
+    /// <summary>Pre-discount line total (null on older rows).</summary>
+    public decimal? ListPrice { get; set; }
+    public string? CouponCode { get; set; }
+    public decimal? DiscountAmount { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? PaidAt { get; set; }
 }
