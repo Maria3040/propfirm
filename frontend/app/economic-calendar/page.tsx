@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { api } from '@/lib/api';
 import {
   CALENDAR_CURRENCIES,
   CALENDAR_EVENTS,
@@ -14,6 +15,15 @@ import {
 
 type ImpactFilter = ImpactLevel | 'past';
 
+type CalendarApiResponse = {
+  source: string;
+  provider?: string;
+  from?: string;
+  to?: string;
+  detail?: string | null;
+  items: CalendarEvent[];
+};
+
 function impactColor(level: ImpactLevel) {
   if (level === 'high') return 'high';
   if (level === 'medium') return 'med';
@@ -26,6 +36,14 @@ function impactLabel(level: ImpactLevel) {
   if (level === 'medium') return 'Medium';
   if (level === 'low') return 'Low';
   return 'No Impact';
+}
+
+function normalizeImpact(raw: string | undefined): ImpactLevel {
+  const v = (raw || '').toLowerCase();
+  if (v === 'high') return 'high';
+  if (v === 'medium' || v === 'med') return 'medium';
+  if (v === 'low') return 'low';
+  return 'none';
 }
 
 function PlusIcon({ className }: { className?: string }) {
@@ -103,22 +121,80 @@ function EventCard({ event }: { event: CalendarEvent }) {
   );
 }
 
+function rangeIso(offsets: number[]) {
+  const today = startOfLocalDay();
+  const min = Math.min(...offsets, -2);
+  const max = Math.max(...offsets, 4);
+  const from = new Date(today);
+  from.setDate(from.getDate() + min);
+  const to = new Date(today);
+  to.setDate(to.getDate() + max);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { from: fmt(from), to: fmt(to) };
+}
+
 export default function EconomicCalendarPage() {
   const [currencies, setCurrencies] = useState<string[]>([]);
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [impacts, setImpacts] = useState<Set<ImpactFilter>>(new Set());
   const [selectedDays, setSelectedDays] = useState<number[]>([0]);
   const [addDayOpen, setAddDayOpen] = useState(false);
+  const [events, setEvents] = useState<CalendarEvent[]>(CALENDAR_EVENTS);
+  const [source, setSource] = useState<'loading' | 'live' | 'demo' | 'error'>('loading');
+  const [statusDetail, setStatusDetail] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const { from, to } = rangeIso([-2, -1, 0, 1, 2, 3, 4]);
+    (async () => {
+      try {
+        const res = await api<CalendarApiResponse>(
+          `/api/economic-calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        );
+        if (cancelled) return;
+        const items = (res.items || []).map((e) => ({
+          ...e,
+          impact: normalizeImpact(e.impact),
+        }));
+        if (res.source === 'live' && items.length > 0) {
+          setEvents(items);
+          setSource('live');
+          setStatusDetail(`Financial Modeling Prep · ${from} → ${to}`);
+        } else if (res.source === 'live') {
+          setEvents([]);
+          setSource('live');
+          setStatusDetail(res.detail || 'No events in this range');
+        } else if (res.source === 'error') {
+          setEvents(CALENDAR_EVENTS);
+          setSource('error');
+          setStatusDetail(res.detail || 'Live calendar failed — showing demo events');
+        } else {
+          setEvents(CALENDAR_EVENTS);
+          setSource('demo');
+          setStatusDetail(res.detail || 'Demo data — set Fmp:ApiKey on the API for live events');
+        }
+      } catch (ex: unknown) {
+        if (cancelled) return;
+        setEvents(CALENDAR_EVENTS);
+        setSource('error');
+        setStatusDetail(ex instanceof Error ? ex.message : 'Failed to reach calendar API — showing demo');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const dayOptions = useMemo(() => {
     const today = startOfLocalDay();
     return [-2, -1, 0, 1, 2, 3, 4].map((offset) => {
       const d = new Date(today);
       d.setDate(d.getDate() + offset);
-      const count = CALENDAR_EVENTS.filter((e) => dayKey(e.datetime) === dayKey(d.toISOString())).length;
+      const count = events.filter((e) => dayKey(e.datetime) === dayKey(d.toISOString())).length;
       return { offset, date: d, label: formatDayLabel(d), count };
     });
-  }, []);
+  }, [events]);
 
   const toggleImpact = (key: ImpactFilter) => {
     setImpacts((prev) => {
@@ -153,7 +229,7 @@ export default function EconomicCalendarPage() {
     const showPastOnly = impacts.has('past') && impacts.size === 1;
     const impactKeys = [...impacts].filter((k): k is ImpactLevel => k !== 'past');
 
-    return CALENDAR_EVENTS.filter((e) => {
+    return events.filter((e) => {
       const t = new Date(e.datetime).getTime();
       const eDay = startOfLocalDay(new Date(e.datetime)).getTime();
       const offset = Math.round((eDay - today) / 86_400_000);
@@ -167,7 +243,7 @@ export default function EconomicCalendarPage() {
 
       return true;
     }).sort((a, b) => +new Date(a.datetime) - +new Date(b.datetime));
-  }, [currencies, impacts, selectedDays]);
+  }, [currencies, impacts, selectedDays, events]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -197,6 +273,15 @@ export default function EconomicCalendarPage() {
         </div>
         <div className="ec-heading-rule" />
         <h1>Economic Calendar</h1>
+        <p className="ec-source meta" role="status">
+          {source === 'loading'
+            ? 'Loading calendar…'
+            : source === 'live'
+              ? `Live · ${statusDetail}`
+              : source === 'demo'
+                ? `Demo · ${statusDetail}`
+                : `Fallback · ${statusDetail}`}
+        </p>
       </header>
 
       <div className="ec-panel">
@@ -287,7 +372,7 @@ export default function EconomicCalendarPage() {
               {addDayOpen && (
                 <div className="ec-add-day-menu">
                   {availableToAdd.length === 0 ? (
-                    <p>All demo days selected</p>
+                    <p>All days in range selected</p>
                   ) : (
                     availableToAdd.map((d) => (
                       <button key={d.offset} type="button" onClick={() => addDay(d.offset)}>
@@ -301,15 +386,19 @@ export default function EconomicCalendarPage() {
           </div>
         </div>
 
-        {grouped.length === 0 ? (
+        {source === 'loading' ? (
+          <div className="ec-empty">
+            <p>Loading economic calendar…</p>
+          </div>
+        ) : grouped.length === 0 ? (
           <div className="ec-empty">
             <p>No economic calendar data available</p>
             <p>Try adjusting your filters to see more results</p>
           </div>
         ) : (
-          grouped.map(([key, events]) => (
+          grouped.map(([key, dayEvents]) => (
             <section key={key} className="ec-day-section">
-              <h2>{formatDayLabel(events[0].datetime)}</h2>
+              <h2>{formatDayLabel(dayEvents[0].datetime)}</h2>
               <div className="ec-table-wrap">
                 <table className="ec-table">
                   <thead>
@@ -324,14 +413,14 @@ export default function EconomicCalendarPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {events.map((e) => (
+                    {dayEvents.map((e) => (
                       <EventRow key={e.id} event={e} />
                     ))}
                   </tbody>
                 </table>
               </div>
               <ul className="ec-cards">
-                {events.map((e) => (
+                {dayEvents.map((e) => (
                   <EventCard key={`m-${e.id}`} event={e} />
                 ))}
               </ul>

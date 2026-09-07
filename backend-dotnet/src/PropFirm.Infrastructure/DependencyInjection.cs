@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PropFirm.Infrastructure.Cache;
+using PropFirm.Infrastructure.Integrations;
 using PropFirm.Infrastructure.Mail;
 using PropFirm.Infrastructure.Persistence;
 using PropFirm.Infrastructure.Security;
@@ -21,6 +22,7 @@ public static class DependencyInjection
         services.AddSingleton<IpIntelService>();
         services.AddSingleton<CatalogCache>();
         services.AddSingleton<HistoryQueries>();
+        services.AddSingleton<EconomicCalendarService>();
         services.AddScoped<MailService>();
         services.AddScoped<PropFirmAppService>();
         return services;

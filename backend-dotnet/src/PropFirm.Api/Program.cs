@@ -260,6 +260,31 @@ app.MapGet("/api/affiliate/me", async (ClaimsPrincipal user, PropFirmAppService 
     catch (DomainError ex) { return DomainFail(ex); }
 }).RequireAuthorization();
 
+app.MapGet("/api/economic-calendar", async (string? from, string? to, PropFirm.Infrastructure.Integrations.EconomicCalendarService calendar, CancellationToken ct) =>
+{
+    var result = await calendar.GetAsync(from, to, ct);
+    return Results.Ok(new
+    {
+        source = result.Source,
+        provider = result.Provider,
+        from = result.From,
+        to = result.To,
+        detail = result.Detail,
+        items = result.Items.Select(e => new
+        {
+            id = e.Id,
+            datetime = e.Datetime,
+            currency = e.Currency,
+            country = e.Country,
+            title = e.Title,
+            impact = e.Impact,
+            actual = e.Actual,
+            forecast = e.Forecast,
+            previous = e.Previous,
+        }),
+    });
+});
+
 app.MapGet("/api/catalog/products", async (string? phaseFamily, string? variant, PropFirmAppService svc) =>
     Results.Ok(await svc.ListProductsAsync(phaseFamily, variant)));
 

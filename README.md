@@ -49,6 +49,17 @@ powershell -ExecutionPolicy Bypass -File .\start-propfirm.ps1
 
 Trader JWT calling `/api/admin/*` → **403**. Admin can approve payouts and browse overview KPIs.
 
+### Live economic calendar (FMP)
+
+1. Free key: https://site.financialmodelingprep.com/register  
+2. Set on the API (pick one):
+   - `backend-dotnet/src/PropFirm.Api/appsettings.Development.json` → `"Fmp": { "ApiKey": "YOUR_KEY" }`
+   - or env: `Fmp__ApiKey=YOUR_KEY`
+3. Restart the API, open http://localhost:3100/economic-calendar  
+   - With a key: **Live** from FMP (`GET /api/economic-calendar`)  
+   - Without a key: **Demo** sample events (status line explains why)
+
+
 ## Diagrams (UML + BPMN)
 
 | Artifact | How to view |

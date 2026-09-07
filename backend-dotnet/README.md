@@ -22,6 +22,17 @@ Runnable **DDD modular monolith** aligned with book **ch07** (`Entity<T>`, repos
 
 Ports: UI `:3100` · API `:6080` · Postgres `:15433` · Redis `:6380` · Mailpit `:8026` / SMTP `:2525`
 
+### Economic calendar (FMP)
+
+`GET /api/economic-calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` proxies [Financial Modeling Prep](https://site.financialmodelingprep.com/developer/docs).
+
+```json
+// appsettings.Development.json
+"Fmp": { "ApiKey": "YOUR_KEY" }
+```
+
+Or env: `Fmp__ApiKey=YOUR_KEY`. Without a key the UI falls back to demo events.
+
 ---
 
 ## DDD (ch07-style)
