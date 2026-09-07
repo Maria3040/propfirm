@@ -57,6 +57,7 @@ export default function SecuritySettingsPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [twoFa, setTwoFa] = useState(false);
+  const [twoFaBusy, setTwoFaBusy] = useState(false);
   const [history, setHistory] = useState<LoginHistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyErr, setHistoryErr] = useState<string | null>(null);
@@ -70,8 +71,14 @@ export default function SecuritySettingsPage() {
     let cancelled = false;
     (async () => {
       try {
-        const rows = await api<LoginHistoryRow[]>('/api/users/me/login-history');
-        if (!cancelled) setHistory(rows);
+        const [rows, me] = await Promise.all([
+          api<LoginHistoryRow[]>('/api/users/me/login-history'),
+          api<{ twoFactorEnabled?: boolean }>('/api/users/me'),
+        ]);
+        if (!cancelled) {
+          setHistory(rows);
+          setTwoFa(!!me.twoFactorEnabled);
+        }
       } catch (ex: unknown) {
         if (!cancelled) setHistoryErr(ex instanceof Error ? ex.message : 'Failed to load history');
       } finally {
@@ -83,7 +90,7 @@ export default function SecuritySettingsPage() {
     };
   }, []);
 
-  const onChangePassword = (e: FormEvent) => {
+  const onChangePassword = async (e: FormEvent) => {
     e.preventDefault();
     setMsg(null);
     setErr(null);
@@ -99,11 +106,38 @@ export default function SecuritySettingsPage() {
       setErr('New password and confirmation do not match.');
       return;
     }
-    setCurrentPassword('');
-    setPassword('');
-    setConfirm('');
-    setMsg('Password updated (demo — not sent to the server).');
+    try {
+      await api('/api/users/me/password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword: password }),
+      });
+      setCurrentPassword('');
+      setPassword('');
+      setConfirm('');
+      setMsg('Password updated.');
+    } catch (ex: unknown) {
+      setErr(ex instanceof Error ? ex.message : 'Password update failed');
+    }
   };
+
+  async function toggleTwoFa() {
+    setMsg(null);
+    setErr(null);
+    setTwoFaBusy(true);
+    try {
+      const next = !twoFa;
+      const res = await api<{ twoFactorEnabled: boolean }>('/api/users/me/2fa', {
+        method: 'POST',
+        body: JSON.stringify({ enabled: next }),
+      });
+      setTwoFa(!!res.twoFactorEnabled);
+      setMsg(res.twoFactorEnabled ? '2FA enabled (persists after refresh).' : '2FA disabled.');
+    } catch (ex: unknown) {
+      setErr(ex instanceof Error ? ex.message : '2FA update failed');
+    } finally {
+      setTwoFaBusy(false);
+    }
+  }
 
   return (
     <div className="settings-page ss-page">
@@ -111,7 +145,7 @@ export default function SecuritySettingsPage() {
 
       <section className="ss-block">
         <h2 className="ss-section-title">Change Password</h2>
-        <form id="change-password-form" onSubmit={onChangePassword}>
+        <form id="change-password-form" onSubmit={(e) => void onChangePassword(e)}>
           <div className="ss-password-row">
             <div className="settings-field">
               <label htmlFor="current_password">Current Password</label>
@@ -172,13 +206,10 @@ export default function SecuritySettingsPage() {
           <button
             type="button"
             className="settings-save-btn"
-            onClick={() => {
-              setTwoFa((v) => !v);
-              setMsg(null);
-              setErr(null);
-            }}
+            disabled={twoFaBusy}
+            onClick={() => void toggleTwoFa()}
           >
-            {twoFa ? 'Disable 2FA' : 'Enable 2FA'}
+            {twoFaBusy ? 'Saving…' : twoFa ? 'Disable 2FA' : 'Enable 2FA'}
           </button>
         </div>
       </section>

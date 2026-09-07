@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { api } from '@/lib/api';
 import {
   AFFILIATE_CODE,
   AFFILIATE_REFERRALS,
@@ -10,11 +11,24 @@ import {
   affiliateReferralUrl,
   formatMoney,
   formatShortDate,
+  type AffiliateReferral,
+  type AffiliateReward,
+  type EarningsPoint,
 } from '@/lib/affiliate-data';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 
 type MainTab = 'earnings' | 'rewards';
 type ViewMode = 'overview' | 'daily';
 type ChartMode = 'cumulative' | 'daily';
+
+type AffiliateDashboard = {
+  code: string;
+  referralUrl: string;
+  stats: { totalReferrals: number; totalPaidOut: number; availableBalance: number };
+  referrals: AffiliateReferral[];
+  rewards: AffiliateReward[];
+  earningsSeries: EarningsPoint[];
+};
 
 function CopyIcon() {
   return (
@@ -57,8 +71,7 @@ async function copyText(text: string) {
   }
 }
 
-function EarningsChart({ mode }: { mode: ChartMode }) {
-  const series = EARNINGS_SERIES;
+function EarningsChart({ mode, series }: { mode: ChartMode; series: EarningsPoint[] }) {
   const values = series.map((p) => (mode === 'cumulative' ? p.cumulative : p.amount));
   const max = Math.max(...values, 1);
   const w = 640;
@@ -114,25 +127,42 @@ function EarningsChart({ mode }: { mode: ChartMode }) {
 }
 
 export default function AffiliatePage() {
+  const { ready, authenticated } = useRequireAuth('/affiliate');
   const [mainTab, setMainTab] = useState<MainTab>('earnings');
   const [viewMode, setViewMode] = useState<ViewMode>('overview');
   const [chartMode, setChartMode] = useState<ChartMode>('cumulative');
   const [copied, setCopied] = useState<'link' | 'code' | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [dash, setDash] = useState<AffiliateDashboard | null>(null);
+  const [loadErr, setLoadErr] = useState('');
+
+  useEffect(() => {
+    if (!authenticated) return;
+    api<AffiliateDashboard>('/api/affiliate/me')
+      .then(setDash)
+      .catch((e) => setLoadErr(String(e.message || e)));
+  }, [authenticated]);
+
+  const code = dash?.code || AFFILIATE_CODE;
+  const stats = dash?.stats || AFFILIATE_STATS;
+  const referrals = dash?.referrals || AFFILIATE_REFERRALS;
+  const rewards = dash?.rewards || AFFILIATE_REWARDS;
+  const earnings = dash?.earningsSeries || EARNINGS_SERIES;
 
   const referralUrl = useMemo(() => {
+    if (dash?.referralUrl) return dash.referralUrl;
     if (typeof window === 'undefined') return affiliateReferralUrl();
-    return affiliateReferralUrl(window.location.origin);
-  }, []);
+    return `${window.location.origin}/register?referral_code=${code}`;
+  }, [dash, code]);
 
   const filteredReferrals = useMemo(() => {
-    return AFFILIATE_REFERRALS.filter((r) => {
+    return referrals.filter((r) => {
       if (dateFrom && r.joinedAt < dateFrom) return false;
       if (dateTo && r.joinedAt > dateTo) return false;
       return true;
     });
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, referrals]);
 
   const onCopy = async (kind: 'link' | 'code', value: string) => {
     const ok = await copyText(value);
@@ -141,6 +171,14 @@ export default function AffiliatePage() {
       window.setTimeout(() => setCopied(null), 1600);
     }
   };
+
+  if (!ready || !authenticated) {
+    return (
+      <div className="aff-page">
+        <p className="meta">Checking session…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="aff-page">
@@ -154,6 +192,7 @@ export default function AffiliatePage() {
           <h1>Affiliate</h1>
         </div>
       </header>
+      {loadErr ? <p className="err">{loadErr}</p> : null}
 
       <div className="aff-tabs" role="tablist" aria-label="Affiliate">
         <button
@@ -202,9 +241,9 @@ export default function AffiliatePage() {
               <button
                 type="button"
                 className="aff-copy-btn"
-                onClick={() => onCopy('code', AFFILIATE_CODE)}
+                onClick={() => onCopy('code', code)}
               >
-                {AFFILIATE_CODE}
+                {code}
                 <CopyIcon />
               </button>
             </div>
@@ -284,22 +323,22 @@ export default function AffiliatePage() {
                     </div>
                   </div>
                   <div className="aff-chart-frame">
-                    <EarningsChart mode={chartMode} />
+                    <EarningsChart mode={chartMode} series={earnings} />
                   </div>
                 </div>
 
                 <div className="aff-stats">
                   <div className="aff-stat">
                     <span>Total Referrals</span>
-                    <strong>{AFFILIATE_STATS.totalReferrals}</strong>
+                    <strong>{stats.totalReferrals}</strong>
                   </div>
                   <div className="aff-stat">
                     <span>Total Paid Out</span>
-                    <strong>{formatMoney(AFFILIATE_STATS.totalPaidOut)}</strong>
+                    <strong>{formatMoney(stats.totalPaidOut)}</strong>
                   </div>
                   <div className="aff-stat">
                     <span>Available Balance</span>
-                    <strong>{formatMoney(AFFILIATE_STATS.availableBalance)}</strong>
+                    <strong>{formatMoney(stats.availableBalance)}</strong>
                   </div>
                 </div>
               </div>
@@ -340,7 +379,7 @@ export default function AffiliatePage() {
             <div className="aff-daily-list">
               <h3>Daily breakdown</h3>
               <ul>
-                {[...EARNINGS_SERIES].reverse().map((p) => (
+                {[...earnings].reverse().map((p) => (
                   <li key={p.date}>
                     <span>{formatShortDate(p.date)}</span>
                     <strong className={p.amount > 0 ? 'pos' : undefined}>
@@ -360,7 +399,7 @@ export default function AffiliatePage() {
           className="aff-panel"
         >
           <div className="aff-rewards-grid">
-            {AFFILIATE_REWARDS.map((rw) => {
+            {rewards.map((rw) => {
               const pct = Math.min(100, Math.round((rw.progress / rw.target) * 100));
               return (
                 <article key={rw.id} className={`aff-reward ${rw.status}`}>

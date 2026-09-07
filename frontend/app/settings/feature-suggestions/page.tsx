@@ -1,6 +1,8 @@
 ﻿'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
+import { api } from '@/lib/api';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 
 const CATEGORIES = [
   { value: 'trading-features', label: 'Trading Features' },
@@ -23,29 +25,81 @@ const PRIORITIES = [
   { value: 'critical', label: 'Critical for My Workflow' },
 ] as const;
 
+type Suggestion = {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  useCase?: string | null;
+  priority: string;
+  status: string;
+  createdAt: string;
+};
+
 export default function FeatureSuggestionsPage() {
+  const { ready, authenticated } = useRequireAuth('/settings/feature-suggestions');
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const [useCase, setUseCase] = useState('');
   const [priority, setPriority] = useState('');
   const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [mine, setMine] = useState<Suggestion[]>([]);
 
-  const onSubmit = (e: FormEvent) => {
+  async function loadMine() {
+    try {
+      const rows = await api<Suggestion[]>('/api/feature-suggestions');
+      setMine(Array.isArray(rows) ? rows : []);
+    } catch {
+      setMine([]);
+    }
+  }
+
+  useEffect(() => {
+    if (!authenticated) return;
+    void loadMine();
+  }, [authenticated]);
+
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setSaved(true);
-    setTitle('');
-    setCategory('');
-    setDescription('');
-    setUseCase('');
-    setPriority('');
-  };
+    setErr('');
+    setSaved(false);
+    setBusy(true);
+    try {
+      await api('/api/feature-suggestions', {
+        method: 'POST',
+        body: JSON.stringify({ title, category, description, useCase, priority }),
+      });
+      setSaved(true);
+      setTitle('');
+      setCategory('');
+      setDescription('');
+      setUseCase('');
+      setPriority('');
+      await loadMine();
+    } catch (ex: unknown) {
+      setErr(ex instanceof Error ? ex.message : 'Submit failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!ready || !authenticated) {
+    return (
+      <div className="settings-page">
+        <h1 className="settings-page-title">Feature Suggestions</h1>
+        <p className="meta">Checking session…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="settings-page">
       <h1 className="settings-page-title">Feature Suggestions</h1>
 
-      <form className="settings-form" onSubmit={onSubmit}>
+      <form className="settings-form" onSubmit={(e) => void onSubmit(e)}>
         <section className="settings-card">
           <header className="settings-card-head">
             <h2>Feature Suggestion</h2>
@@ -149,12 +203,37 @@ export default function FeatureSuggestionsPage() {
         </section>
 
         <div className="settings-actions">
-          {saved ? <p className="settings-saved">Suggestion submitted (demo)</p> : <span />}
-          <button type="submit" className="settings-save-btn">
-            Submit Suggestion
+          {err ? <p className="err">{err}</p> : saved ? <p className="settings-saved">Suggestion submitted</p> : <span />}
+          <button type="submit" className="settings-save-btn" disabled={busy}>
+            {busy ? 'Submitting…' : 'Submit Suggestion'}
           </button>
         </div>
       </form>
+
+      <section className="settings-card" style={{ marginTop: '1.5rem' }}>
+        <header className="settings-card-head">
+          <h2>Your suggestions</h2>
+          <p>Persisted via `GET/POST /api/feature-suggestions`.</p>
+        </header>
+        <div className="settings-card-body">
+          {mine.length === 0 ? (
+            <p className="meta">No suggestions yet.</p>
+          ) : (
+            <ul className="sfs-mine-list">
+              {mine.map((s) => (
+                <li key={s.id}>
+                  <strong>{s.title}</strong>
+                  <span className="meta">
+                    {' '}
+                    · {s.category} · {s.priority} · {s.status}
+                  </span>
+                  <p className="meta">{s.description}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
