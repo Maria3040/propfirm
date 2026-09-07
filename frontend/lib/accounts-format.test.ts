@@ -41,6 +41,7 @@ describe('accounts-format (unit / edge)', () => {
   it('detects archived statuses', () => {
     expect(isArchived('Failed')).toBe(true);
     expect(isArchived('Active')).toBe(false);
+    expect(isArchived({ id: '1', sku: 'x', status: 'Closed', accountSize: 1, currentPhase: 1, phases: 2, archived: true })).toBe(true);
   });
 
   it('falls back account number to id prefix (edge)', () => {
@@ -63,5 +64,13 @@ describe('accounts-format (unit / edge)', () => {
   it('returns status pill classes', () => {
     expect(statusClass('Funded')).toContain('ok');
     expect(statusClass('Failed')).toContain('bad');
+  });
+
+  it('does not treat Funded as trading-disabled (only Failed/Closed/Cancelled)', async () => {
+    const { tradingDisabled } = await import('./accounts-format');
+    expect(tradingDisabled('Funded')).toBe(false);
+    expect(tradingDisabled('Active')).toBe(false);
+    expect(tradingDisabled('Failed')).toBe(true);
+    expect(tradingDisabled('Closed')).toBe(true);
   });
 });

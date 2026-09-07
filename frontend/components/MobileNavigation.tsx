@@ -164,9 +164,14 @@ export function MobileNavigation({ basketCount, onOpenBasket, onLogout, hasSessi
             <BrandLockup className="mobile-nav-lockup" />
           </Link>
           <div className="mobile-nav-actions">
-            <button type="button" className="mobile-nav-icon-btn" aria-label="View notifications" title="View notifications">
+            <Link
+              href="/notifications"
+              className={`mobile-nav-icon-btn${pathname.startsWith('/notifications') ? ' active' : ''}`}
+              aria-label="View notifications"
+              title="Notifications"
+            >
               <IconBell />
-            </button>
+            </Link>
             <button
               type="button"
               className="mobile-nav-icon-btn"

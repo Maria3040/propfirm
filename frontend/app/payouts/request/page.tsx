@@ -65,12 +65,10 @@ function WalletIcon() {
   );
 }
 
-function accountWithdrawable(a: EligibleAccount, walletBal: number): number {
+function accountWithdrawable(a: EligibleAccount, _walletBal: number): number {
   if (typeof a.withdrawable === 'number') return a.withdrawable;
-  if (typeof a.profitShareAvailable === 'number') {
-    return Math.min(a.profitShareAvailable, walletBal);
-  }
-  return walletBal;
+  if (typeof a.profitShareAvailable === 'number') return a.profitShareAvailable;
+  return Math.max(0, Number(a.grossProfit || 0));
 }
 
 export default function RequestRewardPage() {

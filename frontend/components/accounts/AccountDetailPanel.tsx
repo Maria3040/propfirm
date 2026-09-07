@@ -2,7 +2,9 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { api, getSession } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { CopyValue } from '@/components/CopyValue';
 import {
   money,
   moneyPlain,
@@ -20,9 +22,13 @@ type Detail = {
   currentPhase: number;
   phases: number;
   profitTargetPct: number;
+  hasProfitTarget?: boolean;
+  dailyLossPct?: number;
+  maxLossPct?: number;
   maxDailyLossPct: number;
   maxTotalLossPct: number;
   minTradingDays: number;
+  maxTradingDays?: number;
   failReason?: string | null;
   createdAt?: string;
   account: {
@@ -38,12 +44,17 @@ type Detail = {
   progress: {
     equity: number;
     maxEquity: number;
-    targetEquity: number;
+    targetEquity: number | null;
     targetPct: number;
+    hasProfitTarget?: boolean;
     profitPct: number;
     tradingDays: number;
     minTradingDays: number;
+    maxTradingDays?: number;
     dayPnl: number;
+    dailyCap?: number;
+    dailyLossRemaining?: number;
+    maxLossRemaining?: number;
   };
   equitySeries: { t: string; equity: number; dayPnl: number }[];
 };
@@ -61,6 +72,14 @@ function fmtDate(iso?: string) {
   }
 }
 
+function platformLabel(p?: string | null) {
+  const s = (p || '').toLowerCase();
+  if (s.includes('match')) return 'MatchTrader';
+  if (s.includes('mt5') || s === 'mt5') return 'MT5';
+  if (s.includes('mt4')) return 'MT4';
+  return p || 'MT5';
+}
+
 function Sparkline({ series }: { series?: { equity: number }[] | null }) {
   const w = 640;
   const h = 220;
@@ -76,53 +95,30 @@ function Sparkline({ series }: { series?: { equity: number }[] | null }) {
   const vals = points.map((s) => s.equity);
   const min = Math.min(...vals) * 0.995;
   const max = Math.max(...vals) * 1.005;
-  const range = Math.max(1, max - min);
-  const pts = vals
+  const span = Math.max(1e-6, max - min);
+  const coords = vals
     .map((v, i) => {
       const x = pad + (i / Math.max(1, vals.length - 1)) * (w - pad * 2);
-      const y = h - pad - ((v - min) / range) * (h - pad * 2);
+      const y = h - pad - ((v - min) / span) * (h - pad * 2);
       return `${x},${y}`;
     })
     .join(' ');
-  const last = vals[vals.length - 1];
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="acc-spark" role="img" aria-label="Equity chart">
-      <polyline fill="none" stroke="currentColor" strokeWidth="2.5" points={pts} />
-      <text x={pad} y={h - 4} fontSize="11" fill="currentColor" opacity="0.45">
-        {moneyPlain(min)}
-      </text>
-      <text x={w - pad} y={20} fontSize="11" fill="currentColor" opacity="0.45" textAnchor="end">
-        {moneyPlain(max)}
-      </text>
-      <text x={pad} y={20} fontSize="12" fontWeight="600" fill="currentColor">
-        {moneyPlain(last)}
-      </text>
+    <svg className="acc-spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true">
+      <polyline fill="none" stroke="currentColor" strokeWidth="2" points={coords} />
     </svg>
   );
 }
 
-function Gauge({
-  label,
-  value,
-  max,
-}: {
-  label: string;
-  value: number;
-  max: number;
-}) {
-  const pct = Math.max(0, Math.min(100, (value / Math.max(max, 1)) * 100));
+function Gauge({ label, value, max }: { label: string; value: number; max: number }) {
+  const pct = Math.min(100, Math.max(0, (value / Math.max(1, max)) * 100));
   return (
     <div className="acc-gauge">
-      <div className="acc-gauge-row">
+      <div className="acc-gauge-ring" style={{ ['--p' as string]: `${pct}%` }}>
+        <strong>{Math.round(pct)}%</strong>
+      </div>
+      <div className="acc-gauge-meta">
         <span>{label}</span>
-        <strong>{moneyPlain(value)}</strong>
-      </div>
-      <div className="acc-gauge-track">
-        <div className="acc-gauge-fill" style={{ width: `${pct}%` }} />
-        <span className="acc-gauge-knob" style={{ left: `calc(${pct}% - 4px)` }} />
-      </div>
-      <div className="acc-gauge-max">
-        <span>{moneyPlain(max)}</span>
         <em>Max</em>
       </div>
     </div>
@@ -139,8 +135,13 @@ export default function AccountDetailPanel({
   const [data, setData] = useState<Detail | null>(null);
   const [err, setErr] = useState('');
   const [credOpen, setCredOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveBusy, setArchiveBusy] = useState(false);
   const [pnl, setPnl] = useState('200');
+  const [tradeDay, setTradeDay] = useState(() => new Date().toISOString().slice(0, 10));
   const [msg, setMsg] = useState('');
+  const session = getSession();
+  const accountEmail = session?.email || '—';
 
   const load = useCallback(() => {
     setErr('');
@@ -157,6 +158,7 @@ export default function AccountDetailPanel({
             profitPct: 0,
             tradingDays: 0,
             minTradingDays: d.minTradingDays,
+            maxTradingDays: d.maxTradingDays ?? 0,
             dayPnl: 0,
           },
         }),
@@ -169,26 +171,42 @@ export default function AccountDetailPanel({
     load();
   }, [load]);
 
-  async function archive() {
-    if (!confirm('Archive this account? Trading will be disabled.')) return;
+  async function confirmArchive() {
+    setArchiveBusy(true);
     try {
       await api(`/api/challenges/${challengeId}/archive`, { method: 'POST', body: '{}' });
+      setArchiveOpen(false);
       onArchived?.();
       load();
     } catch (e: any) {
       setErr(e.message || 'Archive failed');
+      setArchiveOpen(false);
+    } finally {
+      setArchiveBusy(false);
     }
   }
 
   async function simulate(e: FormEvent) {
     e.preventDefault();
+    if (!data || tradingDisabled(data.status) || data.account?.locked) return;
     setMsg('');
+    setErr('');
     try {
       const res = await api<any>(`/api/challenges/${challengeId}/trades/simulate`, {
         method: 'POST',
-        body: JSON.stringify({ pnl: Number(pnl), symbol: 'EURUSD', side: 'buy', lots: 1 }),
+        body: JSON.stringify({
+          pnl: Number(pnl),
+          symbol: 'EURUSD',
+          side: 'buy',
+          lots: 1,
+          tradeDay: tradeDay || undefined,
+        }),
       });
-      setMsg(`Trade recorded · equity ${moneyPlain(res.equity)} · ${res.challengeStatus}`);
+      const equity = res.equity ?? res.challenge?.progress?.equity ?? res.challenge?.equity;
+      const status = res.challengeStatus ?? res.challenge?.status;
+      const risk = res.risk?.kind ? ` · ${res.risk.kind}${res.risk.rule ? `/${res.risk.rule}` : ''}` : '';
+      const days = res.tradingDays != null ? ` · days ${res.tradingDays}` : '';
+      setMsg(`Trade recorded · equity ${moneyPlain(equity)} · ${status}${days}${risk}`);
       load();
     } catch (ex: any) {
       setErr(ex.message || 'simulate failed');
@@ -197,7 +215,7 @@ export default function AccountDetailPanel({
 
   const score = useMemo(() => {
     if (!data) return 0;
-    const wr = Math.min(100, Math.max(0, 50 + data.progress.profitPct * 2));
+    const wr = Math.min(100, Math.max(0, 50 + (data.progress?.profitPct ?? 0) * 2));
     return Math.round(wr * 10) / 10;
   }, [data]);
 
@@ -217,18 +235,31 @@ export default function AccountDetailPanel({
     );
   }
 
-  const equity = data.progress.equity;
+  const equity = data.progress?.equity ?? data.account?.equity ?? data.accountSize;
   const size = data.accountSize;
   const pnlTotal = equity - size;
-  const maxEq = data.progress.maxEquity || Math.max(equity, size);
+  const maxEq = data.progress?.maxEquity || Math.max(equity, size);
   const disabled = tradingDisabled(data.status) || data.account?.locked;
   const type = typeLabel(data.sku);
   const phase = phaseLabel(data);
   const login = data.account?.login || data.id.slice(0, 9);
-  const dailyCap = size * ((data.maxDailyLossPct || 5) / 100);
-  const totalCap = size * ((data.maxTotalLossPct || 10) / 100);
-  const dailyRemain = Math.max(0, dailyCap + Math.min(0, data.progress.dayPnl));
-  const totalRemain = Math.max(0, equity - (size - totalCap));
+  const dailyCap = data.progress?.dailyCap ?? size * ((data.maxDailyLossPct || data.dailyLossPct || 5) / 100);
+  const totalCap = size * ((data.maxTotalLossPct || data.maxLossPct || 10) / 100);
+  const dayPnl = data.progress?.dayPnl ?? 0;
+  const profitPct = data.progress?.profitPct ?? 0;
+  const targetPct = Number(data.progress?.targetPct ?? data.profitTargetPct ?? 0) || 0;
+  const hasProfitTarget = data.progress?.hasProfitTarget ?? data.hasProfitTarget ?? targetPct > 0;
+  const tradingDays = data.progress?.tradingDays ?? 0;
+  const minDays = data.minTradingDays ?? data.progress?.minTradingDays ?? 0;
+  const maxDays = data.maxTradingDays ?? data.progress?.maxTradingDays ?? 0;
+  const dailyRemain =
+    data.progress?.dailyLossRemaining ?? Math.max(0, dailyCap + Math.min(0, dayPnl));
+  const totalRemain =
+    data.progress?.maxLossRemaining ?? Math.max(0, equity - (size - totalCap));
+  const canSimulate =
+    (data.status === 'Active' || data.status === 'Funded') && !data.account?.locked;
+  const minDaysMet = minDays <= 0 || tradingDays >= minDays;
+  const maxDaysOk = maxDays <= 0 || tradingDays <= maxDays;
 
   return (
     <div className="acc-detail">
@@ -243,10 +274,7 @@ export default function AccountDetailPanel({
       {disabled ? (
         <div className="acc-alert" role="status">
           <strong>Trading Disabled</strong>
-          <p>
-            {data.failReason ||
-              'Trading is currently disabled for this account.'}
-          </p>
+          <p>{data.failReason || 'Trading is currently disabled for this account.'}</p>
         </div>
       ) : null}
 
@@ -263,7 +291,7 @@ export default function AccountDetailPanel({
             <span className={statusClass(data.status)}>{data.status}</span>
             <span className="acc-pill">{type}</span>
             <span className="acc-pill">{phase}</span>
-            <span className="acc-pill">{data.account?.platform || 'MT5'}</span>
+            <span className="acc-pill">{platformLabel(data.account?.platform)}</span>
           </div>
         </div>
         <div className="acc-detail-actions">
@@ -271,7 +299,7 @@ export default function AccountDetailPanel({
             Credentials
           </button>
           {!['Closed', 'Cancelled'].includes(data.status) ? (
-            <button type="button" className="acc-btn-outline" onClick={archive}>
+            <button type="button" className="acc-btn-outline" onClick={() => setArchiveOpen(true)}>
               Archive
             </button>
           ) : null}
@@ -285,9 +313,7 @@ export default function AccountDetailPanel({
         </div>
         <div className="acc-metric-card">
           <span>Today&apos;s Profit</span>
-          <strong className={data.progress.dayPnl >= 0 ? 'up' : 'down'}>
-            {money(data.progress.dayPnl)}
-          </strong>
+          <strong className={dayPnl >= 0 ? 'up' : 'down'}>{money(dayPnl)}</strong>
         </div>
         <div className="acc-metric-card">
           <span>Equity</span>
@@ -312,7 +338,11 @@ export default function AccountDetailPanel({
         </div>
         <div className="acc-gauges-card">
           <Gauge label="Balance" value={equity} max={maxEq} />
-          <Gauge label="Equity" value={equity} max={Math.max(maxEq, data.progress.targetEquity)} />
+          <Gauge
+            label="Equity"
+            value={equity}
+            max={Math.max(maxEq, Number(data.progress?.targetEquity) || size)}
+          />
         </div>
       </div>
 
@@ -328,25 +358,34 @@ export default function AccountDetailPanel({
       <div className="acc-metric-grid">
         <div className="acc-metric-card">
           <span>Profit %</span>
-          <strong className={data.progress.profitPct >= 0 ? 'up' : 'down'}>
-            {data.progress.profitPct >= 0 ? '+' : ''}
-            {data.progress.profitPct.toFixed(1)}%
+          <strong className={profitPct >= 0 ? 'up' : 'down'}>
+            {profitPct >= 0 ? '+' : ''}
+            {profitPct.toFixed(1)}%
           </strong>
         </div>
-        <div className="acc-metric-card">
-          <span>Target</span>
-          <strong>{data.progress.targetPct}%</strong>
-        </div>
+        {hasProfitTarget ? (
+          <div className="acc-metric-card">
+            <span>Target</span>
+            <strong>{targetPct}%</strong>
+          </div>
+        ) : (
+          <div className="acc-metric-card">
+            <span>Target</span>
+            <strong>None</strong>
+          </div>
+        )}
         <div className="acc-metric-card">
           <span>Trading Days</span>
           <strong>
-            {data.progress.tradingDays} / {data.minTradingDays}
+            {tradingDays}
+            {minDays > 0 ? ` / min ${minDays}` : ''}
+            {maxDays > 0 ? ` / max ${maxDays}` : ''}
           </strong>
         </div>
         <div className="acc-metric-card">
           <span>Phase</span>
           <strong>
-            {data.currentPhase} / {data.phases}
+            {data.status === 'Funded' ? 'Funded' : `${data.currentPhase} / ${data.phases}`}
           </strong>
         </div>
       </div>
@@ -360,13 +399,13 @@ export default function AccountDetailPanel({
               <span>Remaining: {moneyPlain(dailyRemain)}</span>
             </div>
             <p className="meta">
-              Max allowed {moneyPlain(dailyCap)} · Today&apos;s PnL {money(data.progress.dayPnl)} ·
-              Threshold {moneyPlain(equity - dailyCap)}
+              Max allowed {moneyPlain(dailyCap)} · Today&apos;s PnL {money(dayPnl)} · Updates with
+              today&apos;s PnL
             </p>
             <div className="acc-rule-bar">
               <span
                 style={{
-                  width: `${Math.min(100, (Math.abs(Math.min(0, data.progress.dayPnl)) / dailyCap) * 100)}%`,
+                  width: `${Math.min(100, (Math.abs(Math.min(0, dayPnl)) / Math.max(1, dailyCap)) * 100)}%`,
                 }}
               />
             </div>
@@ -382,37 +421,86 @@ export default function AccountDetailPanel({
             <div className="acc-rule-bar">
               <span
                 style={{
-                  width: `${Math.min(100, (Math.max(0, size - equity) / totalCap) * 100)}%`,
+                  width: `${Math.min(100, (Math.max(0, size - equity) / Math.max(1, totalCap)) * 100)}%`,
                 }}
               />
             </div>
           </div>
-          <div className="acc-rule">
-            <div className="acc-rule-top">
-              <span>Profit Target</span>
-              <span>
-                {data.progress.profitPct.toFixed(1)}% / {data.progress.targetPct}%
-              </span>
+          {(minDays > 0 || maxDays > 0) && (
+            <div className="acc-rule">
+              <div className="acc-rule-top">
+                <span>Trading Days</span>
+                <span>
+                  {tradingDays}
+                  {minDays > 0 ? ` / min ${minDays}` : ''}
+                  {maxDays > 0 ? ` · max ${maxDays}` : ''}
+                </span>
+              </div>
+              <p className="meta">
+                {minDays > 0
+                  ? minDaysMet
+                    ? 'Minimum trading days met.'
+                    : `Need ${minDays - tradingDays} more trading day(s) before profit target can pass.`
+                  : null}
+                {maxDays > 0
+                  ? maxDaysOk
+                    ? ` ${maxDays - tradingDays} day(s) left before max trading days.`
+                    : ' Max trading days exceeded — account should breach.'
+                  : null}
+              </p>
+              <div className="acc-rule-bar">
+                <span
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      (tradingDays / Math.max(1, maxDays > 0 ? maxDays : minDays || 1)) * 100,
+                    )}%`,
+                  }}
+                />
+              </div>
             </div>
-            <div className="acc-rule-bar">
-              <span
-                style={{
-                  width: `${Math.min(100, Math.max(0, (data.progress.profitPct / data.progress.targetPct) * 100))}%`,
-                }}
-              />
+          )}
+          {hasProfitTarget ? (
+            <div className="acc-rule">
+              <div className="acc-rule-top">
+                <span>Profit Target</span>
+                <span>
+                  {profitPct.toFixed(1)}% / {targetPct}%
+                </span>
+              </div>
+              <div className="acc-rule-bar">
+                <span
+                  style={{
+                    width: `${Math.min(100, Math.max(0, targetPct ? (profitPct / targetPct) * 100 : 0))}%`,
+                  }}
+                />
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </section>
 
-      {data.status === 'Active' ? (
+      {canSimulate ? (
         <form className="acc-sim card stack" onSubmit={simulate}>
           <h3>Simulate trade</h3>
           <label>
             PnL ($)
-            <input value={pnl} onChange={(e) => setPnl(e.target.value)} />
+            <input value={pnl} onChange={(e) => setPnl(e.target.value)} disabled={disabled} />
           </label>
-          <button className="btn" type="submit">
+          <label>
+            Trade day
+            <input
+              type="date"
+              value={tradeDay}
+              onChange={(e) => setTradeDay(e.target.value)}
+              disabled={disabled}
+            />
+          </label>
+          <p className="meta">
+            Pick another date to accumulate trading days (min {minDays || 0}
+            {maxDays > 0 ? `, max ${maxDays}` : ''}). Daily loss uses that day&apos;s PnL.
+          </p>
+          <button className="btn" type="submit" disabled={disabled}>
             Execute simulated trade
           </button>
           {msg ? <p className="meta">{msg}</p> : null}
@@ -421,39 +509,96 @@ export default function AccountDetailPanel({
 
       {err ? <p className="err">{err}</p> : null}
 
+      <ConfirmDialog
+        open={archiveOpen}
+        title="Archive this account?"
+        description={`#${login} will be closed and trading disabled. You can still find it under Show Archived.`}
+        confirmLabel="Archive"
+        danger
+        busy={archiveBusy}
+        onCancel={() => !archiveBusy && setArchiveOpen(false)}
+        onConfirm={() => void confirmArchive()}
+      />
+
       {credOpen ? (
         <div className="acc-modal-backdrop" role="presentation" onClick={() => setCredOpen(false)}>
           <div
-            className="acc-modal"
+            className="acc-cred-dialog"
             role="dialog"
-            aria-label="Trading credentials"
+            aria-modal="true"
+            aria-labelledby="acc-cred-title"
+            aria-describedby="acc-cred-desc"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3>Credentials</h3>
-            {data.account ? (
-              <dl className="acc-cred-dl">
-                <div>
-                  <dt>Login</dt>
-                  <dd>{data.account.login}</dd>
-                </div>
-                <div>
-                  <dt>Password</dt>
-                  <dd>{data.account.password}</dd>
-                </div>
-                <div>
-                  <dt>Server</dt>
-                  <dd>{data.account.server}</dd>
-                </div>
-                <div>
-                  <dt>Platform</dt>
-                  <dd>{data.account.platform}</dd>
-                </div>
-              </dl>
-            ) : (
-              <p className="meta">No trading account provisioned yet.</p>
-            )}
-            <button type="button" className="btn" onClick={() => setCredOpen(false)}>
-              Close
+            <div className="acc-cred-header">
+              <h2 id="acc-cred-title">Account Credentials</h2>
+              <p id="acc-cred-desc" className="meta">
+                #{login}
+              </p>
+            </div>
+            <div className="acc-cred-body">
+              {data.account ? (
+                <>
+                  <dl>
+                    <div>
+                      <dt>Account Username</dt>
+                      <CopyValue value={accountEmail} label="Account Username" />
+                    </div>
+                  </dl>
+                  <dl>
+                    <div>
+                      <dt>Account</dt>
+                      <CopyValue value={login} label="Account" />
+                    </div>
+                  </dl>
+                  <dl>
+                    <div>
+                      <dt>Password</dt>
+                      <CopyValue value={data.account.password} label="Password" />
+                    </div>
+                  </dl>
+                  <dl>
+                    <div>
+                      <dt>Investor Password</dt>
+                      <dd className="acc-cred-value">
+                        <span>—</span>
+                      </dd>
+                    </div>
+                  </dl>
+                  <dl>
+                    <div>
+                      <dt>Server</dt>
+                      <CopyValue value={data.account.server || 'PropFirm-Demo'} label="Server" />
+                    </div>
+                  </dl>
+                  <dl>
+                    <div>
+                      <dt>Platform</dt>
+                      <dd className="acc-cred-value">
+                        <span>{platformLabel(data.account.platform)}</span>
+                      </dd>
+                    </div>
+                  </dl>
+                </>
+              ) : (
+                <p className="meta">No trading account provisioned yet.</p>
+              )}
+            </div>
+            <div className="acc-cred-footer">
+              <a href="https://help.fundingpips.com/en/collections/12032232-how-to-log-in-to-our-trading-platforms">
+                Having trouble logging in?
+              </a>
+              <a
+                href="https://mtr-competition.fundingpips.com"
+                rel="noopener noreferrer"
+                target="_blank"
+                className="acc-cred-platform-link"
+              >
+                Open MatchTrader
+              </a>
+            </div>
+            <button type="button" className="acc-cred-close" aria-label="Close" onClick={() => setCredOpen(false)}>
+              ×
             </button>
           </div>
         </div>

@@ -24,6 +24,7 @@ const APP_PREFIXES = [
   '/trade-copier',
   '/affiliate',
   '/settings',
+  '/notifications',
   '/graphql-lab',
 ];
 

@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useRequireAuth } from '@/hooks/useRequireAuth';
+import { useAdminList } from '@/hooks/useAdminList';
+import { AdminPager, AdminTableToolbar } from '@/components/admin/AdminTableToolbar';
 
 type Wallet = { availableBalance: number };
 type PayoutRow = {
@@ -15,6 +17,7 @@ type PayoutRow = {
   decidedAt?: string | null;
   method?: string;
   rewardType?: string;
+  challengeId?: string | null;
 };
 
 function AwardIcon() {
@@ -53,12 +56,42 @@ function statusLabel(status: string) {
   return status || '—';
 }
 
+function SortTh({
+  label,
+  col,
+  sortBy,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  col: string;
+  sortBy: string;
+  sortDir: string;
+  onSort: (col: string) => void;
+}) {
+  const active = sortBy === col;
+  return (
+    <th>
+      <button type="button" className="hist-sort" onClick={() => onSort(col)}>
+        {label}
+        {active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+      </button>
+    </th>
+  );
+}
+
 export default function PayoutsPage() {
   const router = useRouter();
   const { ready, authenticated } = useRequireAuth('/payouts');
   const [wallet, setWallet] = useState<Wallet>({ availableBalance: 0 });
-  const [rows, setRows] = useState<PayoutRow[]>([]);
   const [err, setErr] = useState('');
+  const list = useAdminList<PayoutRow>({
+    path: '/api/payouts',
+    enabled: authenticated,
+    defaultSortBy: 'createdAt',
+    defaultSortDir: 'desc',
+    pageSize: 10,
+  });
 
   useEffect(() => {
     if (!authenticated) return;
@@ -72,9 +105,6 @@ export default function PayoutsPage() {
         }
         setErr(msg);
       });
-    api<PayoutRow[]>('/api/payouts')
-      .then((r) => setRows(Array.isArray(r) ? r : []))
-      .catch(() => undefined);
   }, [authenticated, router]);
 
   if (!ready || !authenticated) {
@@ -104,7 +134,7 @@ export default function PayoutsPage() {
         </p>
       </div>
 
-      {err && <p className="err">{err}</p>}
+      {(err || list.error) && <p className="err">{err || list.error}</p>}
 
       <div className="rw-top-grid">
         <div className="rw-card rw-cert">
@@ -129,71 +159,89 @@ export default function PayoutsPage() {
       </div>
 
       <section className="rw-history">
-        <div className="rw-history-mobile">
-          <p className="rw-section-label">Rewards</p>
-          {rows.length === 0 ? (
-            empty
-          ) : (
-            <ul className="rw-mobile-list">
-              {rows.map((r) => (
-                <li key={r.id}>
-                  <div>
-                    <strong>{r.id.slice(0, 8)}…</strong>
-                    <span>{statusLabel(r.status)}</span>
-                  </div>
-                  <div>
-                    <em>${Number(r.amount).toFixed(2)}</em>
-                    <span>{formatDate(r.createdAt)}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+        <AdminTableToolbar
+          search={list.searchInput}
+          onSearchChange={list.onSearchChange}
+          searchPlaceholder="Search payout id, method, challenge…"
+          filters={[
+            {
+              key: 'status',
+              label: 'Status',
+              value: list.params.filters.status || '',
+              options: [
+                { value: '', label: 'All' },
+                { value: 'Pending', label: 'Pending' },
+                { value: 'Approved', label: 'Approved' },
+                { value: 'Rejected', label: 'Rejected' },
+              ],
+            },
+          ]}
+          onFilterChange={list.setFilter}
+          page={list.data.page}
+          pageSize={list.data.pageSize}
+          total={list.data.total}
+          totalPages={list.data.totalPages}
+          onPageChange={list.setPage}
+          onPageSizeChange={list.setPageSize}
+          loading={list.loading}
+          filtersOnly
+        />
+
+        <div className="rw-card hist-table-card">
+          <div className="rw-table-head">
+            <p className="rw-section-label">Payout history</p>
+          </div>
+          <div className="hist-table-scroll">
+            <table className="rw-table">
+              <thead>
+                <tr>
+                  <SortTh label="Reference" col="createdAt" sortBy={list.params.sortBy} sortDir={list.params.sortDir} onSort={list.toggleSort} />
+                  <th>Reward Type</th>
+                  <th>Requested On</th>
+                  <SortTh label="Method" col="method" sortBy={list.params.sortBy} sortDir={list.params.sortDir} onSort={list.toggleSort} />
+                  <SortTh label="Status" col="status" sortBy={list.params.sortBy} sortDir={list.params.sortDir} onSort={list.toggleSort} />
+                  <SortTh label="Amount" col="amount" sortBy={list.params.sortBy} sortDir={list.params.sortDir} onSort={list.toggleSort} />
+                </tr>
+              </thead>
+              <tbody>
+                {list.data.total === 0 ? (
+                  <tr>
+                    <td colSpan={6}>{empty}</td>
+                  </tr>
+                ) : (
+                  list.data.items.map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.id.slice(0, 8)}…</td>
+                      <td>{r.rewardType || 'Profit share'}</td>
+                      <td>{formatDate(r.createdAt)}</td>
+                      <td>{methodLabel(r.method)}</td>
+                      <td>
+                        <span className={`rw-status rw-status-${(r.status || '').toLowerCase()}`}>
+                          {statusLabel(r.status)}
+                        </span>
+                      </td>
+                      <td>${Number(r.amount).toFixed(2)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div className="rw-card rw-table-wrap">
-          <div className="rw-table-head">
-            <p className="rw-section-label">Rewards</p>
+        {list.data.total > 0 ? (
+          <div className="notif-pager">
+            <AdminPager
+              page={list.data.page}
+              pageSize={list.data.pageSize}
+              total={list.data.total}
+              totalPages={list.data.totalPages}
+              onPageChange={list.setPage}
+              onPageSizeChange={list.setPageSize}
+              loading={list.loading}
+            />
           </div>
-          <table className="rw-table">
-            <thead>
-              <tr>
-                <th>Reference ID</th>
-                <th>Reward Type</th>
-                <th>Requested On</th>
-                <th>Method</th>
-                <th>Status</th>
-                <th>Amount</th>
-                <th>Certificate</th>
-                <th>Invoice</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={8}>{empty}</td>
-                </tr>
-              ) : (
-                rows.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.id.slice(0, 8)}…</td>
-                    <td>{r.rewardType || 'Profit share'}</td>
-                    <td>{formatDate(r.createdAt)}</td>
-                    <td>{methodLabel(r.method)}</td>
-                    <td>
-                      <span className={`rw-status rw-status-${(r.status || '').toLowerCase()}`}>
-                        {statusLabel(r.status)}
-                      </span>
-                    </td>
-                    <td>${Number(r.amount).toFixed(2)}</td>
-                    <td>—</td>
-                    <td>—</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        ) : null}
       </section>
     </div>
   );

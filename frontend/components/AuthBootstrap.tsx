@@ -7,7 +7,8 @@ import { clearUser, setUser, type AuthUser } from '@/store/authSlice';
 import type { AppDispatch } from '@/store';
 
 type MeResponse = {
-  id: string;
+  id?: string;
+  userId?: string;
   email: string;
   displayName: string;
   role: string;
@@ -22,8 +23,13 @@ export function AuthBootstrap() {
     api<MeResponse>('/api/users/me')
       .then((me) => {
         if (cancelled) return;
+        const userId = me.userId || me.id;
+        if (!userId) {
+          dispatch(clearUser());
+          return;
+        }
         const user: AuthUser = {
-          userId: me.id,
+          userId,
           email: me.email,
           displayName: me.displayName,
           role: me.role,

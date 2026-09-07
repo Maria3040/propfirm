@@ -11,10 +11,13 @@ export type ChallengeRow = {
   login?: string | null;
   platform?: string | null;
   createdAt?: string;
+  archived?: boolean;
+  kind?: string;
+  competitionTitle?: string | null;
 };
 
 export function sizeLabel(n: number) {
-  return n >= 1000 ? `$${n / 1000}k` : `$${n}`;
+  return n >= 1000 ? `$${n / 1000}k` : n > 0 ? `$${n}` : '—';
 }
 
 export function money(n: number | null | undefined, signed = true) {
@@ -39,7 +42,7 @@ export function moneyPlain(n: number | null | undefined) {
 
 export function statusClass(status: string) {
   const s = status.toLowerCase();
-  if (s === 'active' || s === 'funded') return 'acc-pill ok';
+  if (s === 'active' || s === 'funded' || s === 'passed') return 'acc-pill ok';
   if (s === 'failed' || s === 'closed' || s === 'cancelled') return 'acc-pill bad';
   return 'acc-pill';
 }
@@ -53,7 +56,8 @@ export function typeLabel(sku: string) {
   return sku.split(/[-_]/)[0] || 'Challenge';
 }
 
-export function phaseLabel(c: { status: string; currentPhase: number; phases: number }) {
+export function phaseLabel(c: { status: string; currentPhase: number; phases: number; kind?: string; sku?: string }) {
+  if (c.kind === 'competition' || (c.sku || '').toLowerCase().includes('compet')) return 'Competition';
   if (c.status === 'Funded' || c.currentPhase > c.phases) return 'Funded';
   return `Phase ${c.currentPhase}`;
 }
@@ -62,10 +66,14 @@ export function accountNo(c: ChallengeRow) {
   return c.login || c.id.slice(0, 9);
 }
 
-export function isArchived(status: string) {
-  return ['Failed', 'Closed', 'Cancelled'].includes(status);
+export function isArchived(c: ChallengeRow | string) {
+  // Failed/Passed stay filterable in the main list; only Closed/Cancelled (+ archived flag) are "archived".
+  if (typeof c === 'string') return c === 'Closed' || c === 'Cancelled';
+  if (c.archived) return true;
+  return c.status === 'Closed' || c.status === 'Cancelled';
 }
 
 export function tradingDisabled(status: string) {
-  return ['Failed', 'Closed', 'Cancelled'].includes(status);
+  // Funded stays tradeable; Passed/Failed/Closed/Cancelled disable trading.
+  return ['Failed', 'Passed', 'Closed', 'Cancelled'].includes(status);
 }

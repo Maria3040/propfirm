@@ -22,7 +22,25 @@ import { PageNumberPager } from '@/components/PageNumberPager';
 import { GoldMedal, RankMedal, SilverMedal } from '@/components/competition/Medals';
 
 type ModalKind = 'prize' | 'about' | null;
-type SortKey = 'rankAsc' | 'profitDesc' | 'profitAsc' | 'tradesDesc' | 'winRatioDesc' | 'nameAsc';
+type SortKey = 'rankAsc' | 'profitDesc' | 'profitAsc' | 'tradesDesc' | 'winRatioDesc' | 'nameAsc' | 'joinedAsc';
+
+type RegisteredParticipant = {
+  rank: number;
+  traderId: string;
+  name: string;
+  email?: string | null;
+  login?: string | null;
+  platform?: string | null;
+  accountSize?: number;
+  joinedAt: string;
+};
+
+type BoardRow = CompetitionStanding & {
+  joinedAt?: string;
+  login?: string | null;
+  accountSize?: number;
+  isRegisteredOnly?: boolean;
+};
 
 function FlagBadge({ code }: { code: string }) {
   return (
@@ -130,6 +148,17 @@ function Podium({ rows }: { rows: CompetitionStanding[] }) {
   );
 }
 
+function RegistrationHero({ count }: { count: number }) {
+  return (
+    <div className="cd-reg-hero" aria-label="Registration open">
+      <p className="cd-reg-kicker">Pre-start roster</p>
+      <strong>{count.toLocaleString()}</strong>
+      <span>traders joined</span>
+      <p className="cd-reg-note">Leaderboard metrics unlock when the competition starts.</p>
+    </div>
+  );
+}
+
 export default function CompetitionDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -142,39 +171,80 @@ export default function CompetitionDetailPage() {
   const [err, setErr] = useState('');
   const [modal, setModal] = useState<ModalKind>(null);
   const [sortKey, setSortKey] = useState<SortKey>('rankAsc');
+  const [registered, setRegistered] = useState<RegisteredParticipant[]>([]);
+  const [registeredCount, setRegisteredCount] = useState(0);
 
-  const standings = useMemo(() => (c ? getCompetitionStandings(c.id) : []), [c]);
+  const isUpcoming = c?.status === 'upcoming';
+  const standings = useMemo(() => (c && !isUpcoming ? getCompetitionStandings(c.id) : []), [c, isUpcoming]);
 
-  const matchStanding = useCallback((row: CompetitionStanding, q: string) => {
+  const boardRows: BoardRow[] = useMemo(() => {
+    if (isUpcoming) {
+      return registered.map((p) => ({
+        rank: p.rank,
+        name: p.name,
+        country: '—',
+        trades: 0,
+        winRatio: 0,
+        profit: 0,
+        gainPct: 0,
+        joinedAt: p.joinedAt,
+        login: p.login,
+        accountSize: p.accountSize || 100_000,
+        isRegisteredOnly: true,
+      }));
+    }
+    return standings;
+  }, [isUpcoming, registered, standings]);
+
+  const matchStanding = useCallback((row: BoardRow, q: string) => {
     return (
       row.name.toLowerCase().includes(q) ||
       row.country.toLowerCase().includes(q) ||
-      String(row.rank).includes(q)
+      String(row.rank).includes(q) ||
+      (row.login || '').toLowerCase().includes(q)
     );
   }, []);
 
   const compare = useMemo(() => {
     switch (sortKey) {
       case 'profitDesc':
-        return (a: CompetitionStanding, b: CompetitionStanding) => b.profit - a.profit;
+        return (a: BoardRow, b: BoardRow) => b.profit - a.profit;
       case 'profitAsc':
-        return (a: CompetitionStanding, b: CompetitionStanding) => a.profit - b.profit;
+        return (a: BoardRow, b: BoardRow) => a.profit - b.profit;
       case 'tradesDesc':
-        return (a: CompetitionStanding, b: CompetitionStanding) => b.trades - a.trades;
+        return (a: BoardRow, b: BoardRow) => b.trades - a.trades;
       case 'winRatioDesc':
-        return (a: CompetitionStanding, b: CompetitionStanding) => b.winRatio - a.winRatio;
+        return (a: BoardRow, b: BoardRow) => b.winRatio - a.winRatio;
       case 'nameAsc':
-        return (a: CompetitionStanding, b: CompetitionStanding) => a.name.localeCompare(b.name);
+        return (a: BoardRow, b: BoardRow) => a.name.localeCompare(b.name);
+      case 'joinedAsc':
+        return (a: BoardRow, b: BoardRow) =>
+          String(a.joinedAt || '').localeCompare(String(b.joinedAt || ''));
       case 'rankAsc':
       default:
-        return (a: CompetitionStanding, b: CompetitionStanding) => a.rank - b.rank;
+        return (a: BoardRow, b: BoardRow) => a.rank - b.rank;
     }
   }, [sortKey]);
 
-  const listState = useFilteredPagination(standings, matchStanding, {
+  const listState = useFilteredPagination(boardRows, matchStanding, {
     initialPageSize: 10,
     compare,
   });
+
+  const loadParticipants = useCallback(() => {
+    if (!id) return;
+    api<{ count: number; participants: RegisteredParticipant[] }>(
+      `/api/competitions/${encodeURIComponent(id)}/participants`,
+    )
+      .then((res) => {
+        setRegistered(Array.isArray(res.participants) ? res.participants : []);
+        setRegisteredCount(Number(res.count || res.participants?.length || 0));
+      })
+      .catch(() => {
+        setRegistered([]);
+        setRegisteredCount(0);
+      });
+  }, [id]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -186,7 +256,8 @@ export default function CompetitionDetailPage() {
     api<{ competitionIds: string[] }>('/api/competitions/joined')
       .then((res) => setJoined((res.competitionIds || []).includes(id)))
       .catch(() => undefined);
-  }, [id]);
+    loadParticipants();
+  }, [id, loadParticipants]);
 
   if (!c) {
     return (
@@ -217,6 +288,7 @@ export default function CompetitionDetailPage() {
         },
       );
       setJoined(true);
+      loadParticipants();
       if (res.alreadyJoined) setMsg('You already joined this competition.');
       else if (res.emailSent) setMsg('Joined — confirmation email sent (check Mailpit :8026).');
       else setMsg('Joined, but email delivery failed. Is Mailpit SMTP on :2525?');
@@ -230,6 +302,9 @@ export default function CompetitionDetailPage() {
   const canJoin = c.status !== 'ended';
   const joinDisabled = !canJoin || joined || busy;
   const timerIso = c.status === 'upcoming' ? c.startsAt : c.endsAt;
+  const participantLabel = isUpcoming
+    ? Math.max(c.participants, registeredCount)
+    : c.participants;
 
   return (
     <div className="cd-page">
@@ -279,7 +354,7 @@ export default function CompetitionDetailPage() {
           )}
         </div>
         <div className="cd-hero-podium">
-          <Podium rows={standings} />
+          {isUpcoming ? <RegistrationHero count={registeredCount} /> : <Podium rows={standings} />}
         </div>
       </div>
 
@@ -287,10 +362,14 @@ export default function CompetitionDetailPage() {
         <div className="cd-board card-surface">
           <div className="cd-toolbar">
             <label className="cd-search">
-              <span className="sr-only">Filter rankings</span>
+              <span className="sr-only">{isUpcoming ? 'Filter registered traders' : 'Filter rankings'}</span>
               <input
                 type="search"
-                placeholder="Filter by name, country, rank…"
+                placeholder={
+                  isUpcoming
+                    ? 'Filter by name or login…'
+                    : 'Filter by name, country, rank…'
+                }
                 value={listState.query}
                 onChange={(e) => listState.setQuery(e.target.value)}
               />
@@ -304,12 +383,22 @@ export default function CompetitionDetailPage() {
                   listState.setPage(1);
                 }}
               >
-                <option value="rankAsc">Rank</option>
-                <option value="profitDesc">Profit high → low</option>
-                <option value="profitAsc">Profit low → high</option>
-                <option value="tradesDesc">Most trades</option>
-                <option value="winRatioDesc">Win ratio</option>
-                <option value="nameAsc">Name A–Z</option>
+                {isUpcoming ? (
+                  <>
+                    <option value="rankAsc">Join order</option>
+                    <option value="joinedAsc">Joined earliest</option>
+                    <option value="nameAsc">Name A–Z</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="rankAsc">Rank</option>
+                    <option value="profitDesc">Profit high → low</option>
+                    <option value="profitAsc">Profit low → high</option>
+                    <option value="tradesDesc">Most trades</option>
+                    <option value="winRatioDesc">Win ratio</option>
+                    <option value="nameAsc">Name A–Z</option>
+                  </>
+                )}
               </select>
             </label>
             <label className="cd-filter">
@@ -326,6 +415,7 @@ export default function CompetitionDetailPage() {
             </label>
             <p className="cd-toolbar-meta">
               {listState.filteredTotal} traders · page {listState.page}/{listState.pageCount}
+              {isUpcoming ? ' · registered' : ''}
             </p>
           </div>
 
@@ -333,47 +423,83 @@ export default function CompetitionDetailPage() {
             <table className="cd-table">
               <thead>
                 <tr>
-                  <th>Rank</th>
+                  <th>{isUpcoming ? '#' : 'Rank'}</th>
                   <th>Name</th>
-                  <th>Country</th>
-                  <th>Trades</th>
-                  <th>Win Ratio</th>
-                  <th>Profit</th>
-                  <th>Gain</th>
-                  <th aria-label="Chart" />
+                  {isUpcoming ? (
+                    <>
+                      <th>Login</th>
+                      <th>Platform</th>
+                      <th>Account</th>
+                      <th>Joined</th>
+                    </>
+                  ) : (
+                    <>
+                      <th>Country</th>
+                      <th>Trades</th>
+                      <th>Win Ratio</th>
+                      <th>Profit</th>
+                      <th>Gain</th>
+                      <th aria-label="Chart" />
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {listState.pageItems.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="cd-empty">
-                      No traders match this filter.
+                    <td colSpan={isUpcoming ? 6 : 8} className="cd-empty">
+                      {isUpcoming
+                        ? 'No traders have joined yet. Be the first.'
+                        : 'No traders match this filter.'}
                     </td>
                   </tr>
                 ) : (
                   listState.pageItems.map((row) => (
-                    <tr key={`${row.rank}-${row.name}`} className={row.rank > 3 ? 'muted-row' : ''}>
+                    <tr
+                      key={`${row.rank}-${row.name}-${row.login || ''}`}
+                      className={!isUpcoming && row.rank > 3 ? 'muted-row' : ''}
+                    >
                       <td>{row.rank}</td>
                       <td>
                         <span className="cd-name-cell">
-                          {row.rank <= 3 ? <RankMedal rank={row.rank} size={40} /> : null}
+                          {!isUpcoming && row.rank <= 3 ? (
+                            <RankMedal rank={row.rank} size={40} />
+                          ) : null}
                           {row.name}
                         </span>
                       </td>
-                      <td>
-                        <FlagBadge code={row.country} />
-                      </td>
-                      <td>{row.trades}</td>
-                      <td>{row.winRatio}%</td>
-                      <td className="pos">{formatStandingMoney(row.profit)}</td>
-                      <td className="pos">{row.gainPct.toFixed(2)}%</td>
-                      <td>
-                        <button type="button" className="cd-chart-btn" aria-label={`Stats for ${row.name}`} title="View stats">
-                          <svg width="18" height="18" fill="currentColor" viewBox="0 0 256 256" aria-hidden>
-                            <path d="M240,56v64a8,8,0,0,1-16,0V75.31l-82.34,82.35a8,8,0,0,1-11.32,0L96,123.31,29.66,189.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0L136,140.69,212.69,64H168a8,8,0,0,1,0-16h64A8,8,0,0,1,240,56Z" />
-                          </svg>
-                        </button>
-                      </td>
+                      {isUpcoming ? (
+                        <>
+                          <td className="tabular">{row.login || '—'}</td>
+                          <td>matchtrader</td>
+                          <td className="tabular">
+                            {`$${((row.accountSize || 100000) / 1000).toFixed(0)}k`}
+                          </td>
+                          <td>{row.joinedAt ? formatShortDate(row.joinedAt) : '—'}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td>
+                            <FlagBadge code={row.country} />
+                          </td>
+                          <td>{row.trades}</td>
+                          <td>{row.winRatio}%</td>
+                          <td className="pos">{formatStandingMoney(row.profit)}</td>
+                          <td className="pos">{row.gainPct.toFixed(2)}%</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="cd-chart-btn"
+                              aria-label={`Stats for ${row.name}`}
+                              title="View stats"
+                            >
+                              <svg width="18" height="18" fill="currentColor" viewBox="0 0 256 256" aria-hidden>
+                                <path d="M240,56v64a8,8,0,0,1-16,0V75.31l-82.34,82.35a8,8,0,0,1-11.32,0L96,123.31,29.66,189.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0L136,140.69,212.69,64H168a8,8,0,0,1,0-16h64A8,8,0,0,1,240,56Z" />
+                              </svg>
+                            </button>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))
                 )}
@@ -391,9 +517,17 @@ export default function CompetitionDetailPage() {
 
         <aside className="cd-sidebar">
           <div className="cd-rank-card">
-            <div className="cd-rank-card-title">? Current Rank</div>
-            <p className="cd-rank-card-sub">Your current rank in the competition.</p>
-            <button type="button" className="cd-stats-btn" disabled={!joined}>
+            <div className="cd-rank-card-title">
+              {isUpcoming ? (joined ? 'You’re registered' : '? Registration') : '? Current Rank'}
+            </div>
+            <p className="cd-rank-card-sub">
+              {isUpcoming
+                ? joined
+                  ? 'You’re on the joined-traders list. Rankings start when the competition goes live.'
+                  : 'Join to appear on the registered traders table before start.'
+                : 'Your current rank in the competition.'}
+            </p>
+            <button type="button" className="cd-stats-btn" disabled={!joined || isUpcoming}>
               <svg width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden>
                 <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm71.87,53.27L136,114.14V40.37A88,88,0,0,1,199.87,77.27ZM120,40.37v83l-71.89,41.5A88,88,0,0,1,120,40.37ZM128,216a88,88,0,0,1-71.87-37.27L207.89,91.12A88,88,0,0,1,128,216Z" />
               </svg>
@@ -444,7 +578,11 @@ export default function CompetitionDetailPage() {
                 </div>
                 <div>
                   <p>Participants</p>
-                  <strong>{c.participants.toLocaleString()}</strong>
+                  <strong>
+                    {isUpcoming
+                      ? `${registeredCount.toLocaleString()} joined`
+                      : participantLabel.toLocaleString()}
+                  </strong>
                 </div>
               </div>
               <div className="cd-fact">

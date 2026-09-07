@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { api, getSession } from '@/lib/api';
 import AccountDetailPanel from '@/components/accounts/AccountDetailPanel';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 import {
   accountNo,
   ChallengeRow,
@@ -27,9 +28,11 @@ const TYPE_OPTS = [
 ];
 
 const STATE_OPTS = [
+  { value: 'live', label: 'Active, Funded & Passed' },
   { value: 'all', label: 'All States' },
   { value: 'Active', label: 'Active' },
   { value: 'Funded', label: 'Funded' },
+  { value: 'Passed', label: 'Passed' },
   { value: 'Failed', label: 'Failed' },
   { value: 'Closed', label: 'Closed' },
 ];
@@ -53,28 +56,38 @@ function matchesType(sku: string, filter: string) {
 
 function AccountMenu({
   id,
+  login,
   archived,
   onArchived,
 }: {
   id: string;
+  login?: string;
   archived: boolean;
   onArchived: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [menuErr, setMenuErr] = useState('');
 
-  async function archive(e: MouseEvent) {
+  function askArchive(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     if (archived || busy) return;
-    if (!confirm('Archive this account?')) return;
+    setMenuErr('');
+    setConfirmOpen(true);
+    setOpen(false);
+  }
+
+  async function doArchive() {
     setBusy(true);
+    setMenuErr('');
     try {
       await api(`/api/challenges/${id}/archive`, { method: 'POST', body: '{}' });
-      setOpen(false);
+      setConfirmOpen(false);
       onArchived();
-    } catch (err: any) {
-      alert(err.message || 'Archive failed');
+    } catch (ex: any) {
+      setMenuErr(ex.message || 'Archive failed');
     } finally {
       setBusy(false);
     }
@@ -100,7 +113,7 @@ function AccountMenu({
           <button type="button" className="acc-menu-scrim" aria-label="Close menu" onClick={() => setOpen(false)} />
           <div className="acc-menu-pop" role="menu">
             {!archived ? (
-              <button type="button" role="menuitem" disabled={busy} onClick={archive}>
+              <button type="button" role="menuitem" disabled={busy} onClick={askArchive}>
                 Archive
               </button>
             ) : (
@@ -109,23 +122,72 @@ function AccountMenu({
           </div>
         </>
       ) : null}
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Archive this account?"
+        description={`#${login || id.slice(0, 9)} will be closed. We’ll email you a link to undo.`}
+        confirmLabel="Archive"
+        danger
+        busy={busy}
+        onCancel={() => !busy && setConfirmOpen(false)}
+        onConfirm={() => void doArchive()}
+      />
+      {menuErr ? <p className="err acc-menu-err">{menuErr}</p> : null}
+    </div>
+  );
+}
+
+function EmptyDetailPanel({ noAccounts }: { noAccounts: boolean }) {
+  return (
+    <div className="acc-select-empty">
+      <div className="acc-select-empty-icon" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 256 256">
+          <path d="M216,56H176V48a24,24,0,0,0-24-24H104A24,24,0,0,0,80,48v8H40A16,16,0,0,0,24,72V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V72A16,16,0,0,0,216,56ZM96,48a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96ZM216,72v41.61A184,184,0,0,1,128,136a184.07,184.07,0,0,1-88-22.38V72Zm0,128H40V131.64A200.19,200.19,0,0,0,128,152a200.25,200.25,0,0,0,88-20.37V200ZM104,112a8,8,0,0,1,8-8h32a8,8,0,0,1,0,16H112A8,8,0,0,1,104,112Z" />
+        </svg>
+      </div>
+      <h3>Select an Account to View Details</h3>
+      <p>Choose a trading account from the list to see its detailed information and performance metrics.</p>
+      <div className="acc-select-empty-cta">
+        <p>
+          {noAccounts ? (
+            <>
+              Don&apos;t have an account yet?
+              <br />
+              Trade up to $400,000 in simulated capital.
+            </>
+          ) : (
+            <>
+              Need another account?
+              <br />
+              Trade up to $400,000 in simulated capital.
+            </>
+          )}
+        </p>
+        <Link href="/new-challenge" className="acc-buy-challenge-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true">
+            <path d="M223.85,47.12a16,16,0,0,0-15-15c-12.58-.75-44.73.4-71.41,27.07L132.69,64H74.36A15.91,15.91,0,0,0,63,68.68L28.7,103a16,16,0,0,0,9.07,27.16l38.47,5.37,44.21,44.21,5.37,38.49a15.94,15.94,0,0,0,10.78,12.92,16.11,16.11,0,0,0,5.1.83A15.91,15.91,0,0,0,153,227.3L187.32,193A15.91,15.91,0,0,0,192,181.64V123.31l4.77-4.77C223.45,91.86,224.6,59.71,223.85,47.12ZM74.36,80h42.33L77.16,119.52,40,114.34Zm74.41-9.45a76.65,76.65,0,0,1,59.11-22.47,76.46,76.46,0,0,1-22.42,59.16L128,164.68,91.32,128ZM176,181.64,141.67,216l-5.19-37.17L176,139.31Zm-74.16,9.5C97.34,201,82.29,224,40,224a8,8,0,0,1-8-8c0-42.29,23-57.34,32.86-61.85a8,8,0,0,1,6.64,14.56c-6.43,2.93-20.62,12.36-23.12,38.91,26.55-2.5,36-16.69,38.91-23.12a8,8,0,1,1,14.56,6.64Z" />
+          </svg>
+          Buy Challenge
+        </Link>
+      </div>
     </div>
   );
 }
 
 export default function AccountsWorkspace({ selectedId }: { selectedId?: string }) {
-  const router = useRouter();
+  const { ready: authReady, authenticated } = useRequireAuth(
+    selectedId ? `/accounts/${selectedId}` : '/accounts',
+  );
   const [rows, setRows] = useState<ChallengeRow[]>([]);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [err, setErr] = useState('');
   const [typeF, setTypeF] = useState('all');
-  const [stateF, setStateF] = useState('all');
+  const [stateF, setStateF] = useState('live');
   const [phaseF, setPhaseF] = useState('all');
   const [showArchived, setShowArchived] = useState(false);
   const [compact, setCompact] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [name, setName] = useState('Trader');
-  const [ready, setReady] = useState(false);
 
   const load = useCallback(() => {
     setErr('');
@@ -135,7 +197,7 @@ export default function AccountsWorkspace({ selectedId }: { selectedId?: string 
       api<{ displayName?: string; email?: string }>('/api/users/me').catch(() => null),
     ])
       .then(([ch, w, me]) => {
-        setRows(ch);
+        setRows(Array.isArray(ch) ? ch : []);
         setWallet(w);
         const session = getSession();
         const display = me?.displayName || session?.displayName || '';
@@ -147,21 +209,21 @@ export default function AccountsWorkspace({ selectedId }: { selectedId?: string 
   }, []);
 
   useEffect(() => {
-    const session = getSession();
-    if (!session) {
-      router.replace(`/login?next=${encodeURIComponent(selectedId ? `/accounts/${selectedId}` : '/accounts')}`);
-      return;
-    }
-    setReady(true);
+    if (!authenticated) return;
     load();
-  }, [load, router, selectedId]);
+  }, [authenticated, load]);
 
   const filtered = useMemo(() => {
     return rows.filter((c) => {
-      const archived = isArchived(c.status);
-      if (!showArchived && archived) return false;
+      const archived = isArchived(c);
       if (!matchesType(c.sku, typeF)) return false;
-      if (stateF !== 'all' && c.status !== stateF) return false;
+      if (showArchived) return archived;
+      if (archived) return false;
+      if (stateF === 'live') {
+        if (!(c.status === 'Active' || c.status === 'Funded' || c.status === 'Passed')) return false;
+      } else if (stateF !== 'all' && c.status !== stateF) {
+        return false;
+      }
       if (phaseF === 'funded') {
         if (!(c.status === 'Funded' || c.currentPhase > c.phases)) return false;
       } else if (phaseF !== 'all' && String(c.currentPhase) !== phaseF) {
@@ -173,9 +235,10 @@ export default function AccountsWorkspace({ selectedId }: { selectedId?: string 
 
   const rewardCount = rows.filter((r) => r.status === 'Funded').length;
   const totalRewards = wallet?.availableBalance ?? 0;
+  const noAccounts = rows.filter((r) => !isArchived(r)).length === 0;
 
-  if (!ready) {
-    return <p className="meta">Redirecting to login…</p>;
+  if (!authReady || !authenticated) {
+    return <p className="meta">Checking session…</p>;
   }
 
   return (
@@ -183,38 +246,40 @@ export default function AccountsWorkspace({ selectedId }: { selectedId?: string 
       <div className={`acc-sidebar${collapsed ? ' is-collapsed' : ''}`}>
         <div className="acc-sidebar-inner">
           <div className="acc-list-pad">
-            <section className="acc-header">
-              <div className="acc-header-glow" aria-hidden="true" />
-              <div className="acc-header-top">
-                <h1>Hey, {name}</h1>
-                <p>Your PropFirm account overview</p>
-              </div>
-              <div className="acc-metrics">
-                <div>
-                  <div className="acc-metric-label">Trader Rank</div>
-                  <div className="acc-tier">Bronze Tier</div>
+            <div className="acc-list-inset">
+              <section className="acc-header">
+                <div className="acc-header-glow" aria-hidden="true" />
+                <div className="acc-header-top">
+                  <h1>Hey, {name}</h1>
+                  <p>Your PropFirm account overview</p>
                 </div>
-                <div>
-                  <div className="acc-metric-label">Reward Count</div>
-                  <div className="acc-metric-value">{rewardCount}</div>
-                </div>
-                <div>
-                  <div className="acc-metric-label">Total Rewards</div>
-                  <div className="acc-metric-value">
-                    ${totalRewards.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <div className="acc-metrics">
+                  <div>
+                    <div className="acc-metric-label">Trader Rank</div>
+                    <div className="acc-tier">Bronze Tier</div>
+                  </div>
+                  <div>
+                    <div className="acc-metric-label">Reward Count</div>
+                    <div className="acc-metric-value">{rewardCount}</div>
+                  </div>
+                  <div>
+                    <div className="acc-metric-label">Total Rewards</div>
+                    <div className="acc-metric-value">
+                      ${totalRewards.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </section>
+              </section>
+            </div>
           </div>
 
           <div className="acc-list-body">
             <div className="acc-buy-wrap">
-              <Link href="/" className="acc-buy">
+              <Link href="/new-challenge" className="acc-buy">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256" aria-hidden="true">
-                  <path d="M223.85,47.12a16,16,0,0,0-15-15c-12.58-.75-44.73.4-71.41,27.07L132.69,64H74.36A15.91,15.91,0,0,0,63,68.68L28.7,103a16,16,0,0,0,9.07,27.16l38.47,5.37,44.21,44.21,5.37,38.49a15.94,15.94,0,0,0,10.78,12.92,16.11,16.11,0,0,0,5.1.83A15.91,15.91,0,0,0,153,227.3L187.32,193A15.91,15.91,0,0,0,192,181.64V123.31l4.77-4.77C223.45,91.86,224.6,59.71,223.85,47.12Z" />
+                  <path d="M223.85,47.12a16,16,0,0,0-15-15c-12.58-.75-44.73.4-71.41,27.07L132.69,64H74.36A15.91,15.91,0,0,0,63,68.68L28.7,103a16,16,0,0,0,9.07,27.16l38.47,5.37,44.21,44.21,5.37,38.49a15.94,15.94,0,0,0,10.78,12.92,16.11,16.11,0,0,0,5.1.83A15.91,15.91,0,0,0,153,227.3L187.32,193A15.91,15.91,0,0,0,192,181.64V123.31l4.77-4.77C223.45,91.86,224.6,59.71,223.85,47.12ZM74.36,80h42.33L77.16,119.52,40,114.34Zm74.41-9.45a76.65,76.65,0,0,1,59.11-22.47,76.46,76.46,0,0,1-22.42,59.16L128,164.68,91.32,128ZM176,181.64,141.67,216l-5.19-37.17L176,139.31Zm-74.16,9.5C97.34,201,82.29,224,40,224a8,8,0,0,1-8-8c0-42.29,23-57.34,32.86-61.85a8,8,0,0,1,6.64,14.56c-6.43,2.93-20.62,12.36-23.12,38.91,26.55-2.5,36-16.69,38.91-23.12a8,8,0,1,1,14.56,6.64Z" />
                 </svg>
-                <span>BUY CHALLENGE</span>
+                <span>Buy Challenge</span>
               </Link>
             </div>
 
@@ -230,7 +295,7 @@ export default function AccountsWorkspace({ selectedId }: { selectedId?: string 
                 </select>
               </label>
               <label className="acc-select">
-                <span className="sr-only">All States</span>
+                <span className="sr-only">States</span>
                 <select value={stateF} onChange={(e) => setStateF(e.target.value)}>
                   {STATE_OPTS.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -288,20 +353,23 @@ export default function AccountsWorkspace({ selectedId }: { selectedId?: string 
             <div className="acc-scroll">
               {filtered.length === 0 ? (
                 <div className="acc-empty">
-                  <p>No accounts match these filters.</p>
-                  <span>Buy a challenge to get started.</span>
-                  <Link href="/" className="acc-buy sm">
-                    BUY CHALLENGE
-                  </Link>
+                  <p>{noAccounts ? 'No accounts yet.' : 'No accounts match these filters.'}</p>
+                  <span>Buy a challenge or join a competition to get started.</span>
                 </div>
               ) : (
                 filtered.map((c) => {
                   const selected = selectedId === c.id;
-                  const archived = isArchived(c.status);
+                  const archived = isArchived(c);
                   const type = typeLabel(c.sku);
                   const phase = phaseLabel(c);
-                  const pnl = c.pnl ?? 0;
-                  const pct = c.profitPct ?? 0;
+                  const pnl = c.pnl ?? (c.equity ?? c.accountSize) - c.accountSize;
+                  const pct =
+                    c.profitPct ??
+                    (c.accountSize ? (((c.equity ?? c.accountSize) - c.accountSize) / c.accountSize) * 100 : 0);
+                  const title =
+                    c.kind === 'competition' && c.competitionTitle
+                      ? c.competitionTitle
+                      : `#${accountNo(c)}`;
                   return (
                     <Link
                       key={c.id}
@@ -323,7 +391,7 @@ export default function AccountsWorkspace({ selectedId }: { selectedId?: string 
                             <path d="M192,32H64A32,32,0,0,0,32,64V192a32,32,0,0,0,32,32H192a32,32,0,0,0,32-32V64A32,32,0,0,0,192,32Zm16,160a16,16,0,0,1-16,16H64a16,16,0,0,1-16-16V64A16,16,0,0,1,64,48H192a16,16,0,0,1,16,16ZM104,92A12,12,0,1,1,92,80,12,12,0,0,1,104,92Zm72,0a12,12,0,1,1-12-12A12,12,0,0,1,176,92Zm-72,72a12,12,0,1,1-12-12A12,12,0,0,1,104,164Zm36-36a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm36,36a12,12,0,1,1-12-12A12,12,0,0,1,176,164Z" />
                           </svg>
                           <div>
-                            <div className="acc-card-title">#{accountNo(c)}</div>
+                            <div className="acc-card-title">{title}</div>
                             <div className="acc-card-sub">
                               <span>{sizeLabel(c.accountSize)}</span>
                               <span aria-hidden="true">•</span>
@@ -335,7 +403,9 @@ export default function AccountsWorkspace({ selectedId }: { selectedId?: string 
                         </div>
                         <div className="acc-card-right">
                           <span className={statusClass(c.status)}>{c.status}</span>
-                          <AccountMenu id={c.id} archived={archived} onArchived={load} />
+                          {c.kind !== 'competition' ? (
+                            <AccountMenu id={c.id} login={accountNo(c)} archived={archived} onArchived={load} />
+                          ) : null}
                         </div>
                       </div>
                       {!compact ? (
@@ -343,7 +413,7 @@ export default function AccountsWorkspace({ selectedId }: { selectedId?: string 
                           <div>
                             <div className="acc-metric-label">Balance</div>
                             <div className="acc-metric-value">
-                              ${(c.equity ?? c.accountSize).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              {`$${(c.equity ?? c.accountSize).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
                             </div>
                           </div>
                           <div>
@@ -352,13 +422,14 @@ export default function AccountsWorkspace({ selectedId }: { selectedId?: string 
                           </div>
                           <div>
                             <div className="acc-metric-label">P&amp;L</div>
-                            <div className={`acc-metric-value${pnl >= 0 ? ' up' : ' down'}`}>{money(pnl)}</div>
+                            <div className={`acc-metric-value${pnl >= 0 ? ' up' : ' down'}`}>
+                              {money(pnl)}
+                            </div>
                           </div>
                           <div>
                             <div className="acc-metric-label">Profit %</div>
                             <div className={`acc-metric-value${pct >= 0 ? ' up' : ' down'}`}>
-                              {pct >= 0 ? '+' : ''}
-                              {pct.toFixed(1)}%
+                              {`${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`}
                             </div>
                           </div>
                         </div>
@@ -385,10 +456,7 @@ export default function AccountsWorkspace({ selectedId }: { selectedId?: string 
         {selectedId ? (
           <AccountDetailPanel challengeId={selectedId} onArchived={load} />
         ) : (
-          <div className="acc-detail-empty acc-detail-placeholder">
-            <h2>Select an account</h2>
-            <p className="meta">Choose an account from the list to view analytics, objectives, and credentials.</p>
-          </div>
+          <EmptyDetailPanel noAccounts={noAccounts} />
         )}
       </div>
     </div>

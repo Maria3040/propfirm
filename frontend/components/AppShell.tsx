@@ -209,20 +209,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <button
             type="button"
-            className={`app-sidebar-btn primary${count ? ' has-badge' : ''}${basketOpen ? ' open' : ''}`}
+            className={`app-sidebar-btn${count ? ' has-badge' : ''}${basketOpen ? ' active' : ''}`}
             aria-label={count ? `Basket, ${count} challenge${count === 1 ? '' : 's'}` : 'Basket'}
             title={count ? `Basket, ${count}` : 'Start a challenge'}
             aria-haspopup="dialog"
             aria-expanded={basketOpen}
-            onClick={() => setBasketOpen(true)}
+            onClick={() => setBasketOpen((o) => !o)}
           >
             <Icon name="basket" />
             {count > 0 ? <span className="app-sidebar-badge">{count}</span> : null}
           </button>
 
-          <button type="button" className="app-sidebar-btn" aria-label="View notifications" title="View notifications">
+          <Link
+            href="/notifications"
+            className={`app-sidebar-btn${pathname.startsWith('/notifications') ? ' active' : ''}`}
+            aria-label="View notifications"
+            title="Notifications"
+            aria-current={pathname.startsWith('/notifications') ? 'page' : undefined}
+          >
             <Icon name="bell" />
-          </button>
+          </Link>
 
           <nav aria-label="Main Navigation" className="app-sidebar-nav">
             {NAV.map((item) => {
