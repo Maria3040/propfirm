@@ -18,7 +18,7 @@ $env:ConnectionStrings__Default = "Host=127.0.0.1;Port=15433;Database=propfirm;U
 $env:HTTP_PORT = "6080"
 $env:Smtp__Host = "127.0.0.1"
 $env:Smtp__Port = "2525"
-$env:Cors__Origins = "http://localhost:3100,http://127.0.0.1:3100"
+$env:Cors__Origins = "http://localhost:3100,http://127.0.0.1:3100,http://localhost:3200,http://127.0.0.1:3200"
 Remove-Item Env:NEXT_PUBLIC_API_BASE -ErrorAction SilentlyContinue
 $env:API_PROXY_TARGET = "http://127.0.0.1:6080"
 
